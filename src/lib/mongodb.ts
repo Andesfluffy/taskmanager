@@ -15,7 +15,8 @@ export type TaskRecord = {
   _id?: MongoId;
   title: string;
   description?: string;
-  completed: boolean;
+  status: "todo" | "doing" | "done";
+  priority: "High" | "Medium" | "Low";
   createdAt: string;
   updatedAt: string;
 };
@@ -81,18 +82,25 @@ export async function fetchTasks() {
     id: normalizeId(doc._id),
     title: doc.title,
     description: doc.description ?? "",
-    completed: Boolean(doc.completed),
+    status: doc.status ?? "todo",
+    priority: doc.priority ?? "Medium",
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   }));
 }
 
-export async function insertTask(input: { title: string; description?: string }) {
+export async function insertTask(input: {
+  title: string;
+  description?: string;
+  status?: TaskRecord["status"];
+  priority?: TaskRecord["priority"];
+}) {
   const now = new Date().toISOString();
   const task: TaskRecord = {
     title: input.title.trim(),
     description: input.description?.trim() ?? "",
-    completed: false,
+    status: input.status ?? "todo",
+    priority: input.priority ?? "Medium",
     createdAt: now,
     updatedAt: now,
   };
@@ -105,11 +113,15 @@ export async function insertTask(input: { title: string; description?: string })
   return { id: normalizeId(result.insertedId) ?? "", ...task };
 }
 
-export async function updateTask(id: string, updates: Partial<Pick<TaskRecord, "title" | "description" | "completed">>) {
+export async function updateTask(
+  id: string,
+  updates: Partial<Pick<TaskRecord, "title" | "description" | "status" | "priority">>,
+) {
   const sanitizedUpdates = {
     ...(typeof updates.title === "string" ? { title: updates.title.trim() } : {}),
     ...(typeof updates.description === "string" ? { description: updates.description.trim() } : {}),
-    ...(typeof updates.completed === "boolean" ? { completed: updates.completed } : {}),
+    ...(typeof updates.status === "string" ? { status: updates.status } : {}),
+    ...(typeof updates.priority === "string" ? { priority: updates.priority } : {}),
   };
 
   if (!Object.keys(sanitizedUpdates).length) {
@@ -120,5 +132,12 @@ export async function updateTask(id: string, updates: Partial<Pick<TaskRecord, "
     collection: "tasks",
     filter: { _id: { $oid: id } },
     update: { $set: { ...sanitizedUpdates, updatedAt: new Date().toISOString() } },
+  });
+}
+
+export async function deleteTask(id: string) {
+  await callMongoDataApi("deleteOne", {
+    collection: "tasks",
+    filter: { _id: { $oid: id } },
   });
 }

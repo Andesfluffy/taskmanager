@@ -1,8 +1,19 @@
 import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
 
-const requiredEnv = ["MONGODB_URI", "MONGODB_DATABASE"] as const;
+function readMongoEnv(): { uri: string; dbName: string } {
+  const uri = process.env.MONGODB_URI ?? "";
 
-type MongoEnv = Record<(typeof requiredEnv)[number], string>;
+  if (!uri) {
+    throw new Error("Missing MongoDB env var: MONGODB_URI");
+  }
+
+  // Extract database name from connection string
+  // Format: mongodb+srv://user:pass@cluster.mongodb.net/dbname?...
+  const dbNameMatch = uri.match(/\/([^/?]+)(\?|$)/);
+  const dbName = dbNameMatch?.[1] || "taskmanager";
+
+  return { uri, dbName };
+}
 
 export type TaskRecord = {
   id: string;
@@ -26,20 +37,6 @@ type DbTaskRecord = {
   updatedAt: Date;
 };
 
-function readMongoEnv(): MongoEnv {
-  const env = {
-    MONGODB_URI: process.env.MONGODB_URI ?? "",
-    MONGODB_DATABASE: process.env.MONGODB_DATABASE ?? "",
-  } satisfies MongoEnv;
-
-  const missing = requiredEnv.filter((key) => !env[key]);
-  if (missing.length) {
-    throw new Error(`Missing MongoDB env var${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}`);
-  }
-
-  return env;
-}
-
 const mongoEnv = readMongoEnv();
 
 let cachedClient: MongoClient | null = null;
@@ -47,7 +44,7 @@ let cachedClient: MongoClient | null = null;
 async function getMongoClient() {
   if (cachedClient) return cachedClient;
 
-  const client = new MongoClient(mongoEnv.MONGODB_URI, {
+  const client = new MongoClient(mongoEnv.uri, {
     serverApi: {
       version: ServerApiVersion.v1,
       strict: true,
@@ -100,7 +97,7 @@ function normalizeTask(doc: DbTaskRecord): TaskRecord {
 
 async function getTasksCollection() {
   const client = await getMongoClient();
-  const db = client.db(mongoEnv.MONGODB_DATABASE);
+  const db = client.db(mongoEnv.dbName);
   return db.collection<DbTaskRecord>("tasks");
 }
 
@@ -136,7 +133,7 @@ export async function insertTask(input: {
     priority,
     createdAt: now,
     updatedAt: now,
-  });
+  } as unknown as DbTaskRecord);
 
   return normalizeTask({
     _id: result.insertedId,

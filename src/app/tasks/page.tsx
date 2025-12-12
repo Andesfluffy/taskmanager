@@ -177,14 +177,6 @@ export default function TasksPage() {
     }
   };
 
-  const showToast = useCallback((toast: Omit<Toast, "id">) => {
-    const id = crypto.randomUUID();
-    setToasts((prev) => [...prev, { ...toast, id }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((item) => item.id !== id));
-    }, 4200);
-  }, []);
-
   const interactionBlockedReason =
     authState.phase === "error"
       ? authState.message
@@ -206,53 +198,6 @@ export default function TasksPage() {
     setActionMessage(interactionBlockedReason);
     return false;
   };
-
-  const validateTaskFields = ({ title }: { title: string }) => {
-    const trimmed = title.trim();
-    if (!trimmed) return "Title is required.";
-    if (trimmed.length < 3) return "Use at least 3 characters for the title.";
-    return null;
-  };
-
-  const requestJson = async <T,>(input: RequestInfo | URL, init?: RequestInit) => {
-    const response = await fetch(input, {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...(init?.headers ?? {}),
-      },
-    });
-
-    let payload: unknown;
-    try {
-      payload = await response.json();
-    } catch {
-      payload = {};
-    }
-
-    if (!response.ok) {
-      const errorMessage =
-        typeof (payload as { error?: unknown }).error === "string"
-          ? (payload as { error?: unknown }).error
-          : "Request failed.";
-      throw new Error(errorMessage);
-    }
-
-    return payload as T;
-  };
-
-  const loadTasks = useCallback(async () => {
-    setIsLoadingTasks(true);
-    try {
-      const data = await requestJson<{ tasks: Task[] }>("/api/tasks");
-      setTasks(data.tasks ?? []);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to load tasks.";
-      showToast({ tone: "error", title: "Unable to load tasks", description: message });
-    } finally {
-      setIsLoadingTasks(false);
-    }
-  }, [showToast]);
 
   const handleAddTask = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

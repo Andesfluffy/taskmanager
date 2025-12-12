@@ -40,6 +40,73 @@ const perks = [
 ];
 
 export default function Home() {
+  const missingConfig = useMemo(
+    () =>
+      Object.entries(firebaseConfig)
+        .filter(([, value]) => !value)
+        .map(([key]) => key.replace("authDomain", "auth domain")),
+    [],
+  );
+
+  const [authState, setAuthState] = useState<AuthState>(() =>
+    missingConfig.length > 0
+      ? {
+          phase: "error",
+          message: `Add the missing Firebase env vars: ${missingConfig.join(", ")}`,
+        }
+      : { phase: "loading" },
+  );
+  const [actionMessage, setActionMessage] = useState<string>("");
+
+  useEffect(() => {
+    if (missingConfig.length > 0) return undefined;
+
+    let unsubscribe: (() => void) | undefined;
+
+    getFirebase(firebaseConfig)
+      .then(({ auth }) => {
+        unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
+          setAuthState({
+            phase: "ready",
+            user: firebaseUser ?? undefined,
+          });
+        });
+      })
+      .catch((error: Error) => {
+        setAuthState({ phase: "error", message: error.message });
+      });
+
+    return () => unsubscribe?.();
+  }, [missingConfig]);
+
+  const handleGoogleSignIn = async () => {
+    setActionMessage("Signing you in with Google…");
+    try {
+      const { firebase, auth } = await getFirebase(firebaseConfig);
+      const provider = new firebase.auth.GoogleAuthProvider();
+      await auth.signInWithPopup(provider);
+      setActionMessage("Welcome back! Redirecting to your tasks.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to sign in right now.";
+      setActionMessage(message);
+    }
+  };
+
+  const handleSignOut = async () => {
+    setActionMessage("Signing you out…");
+    try {
+      const { auth } = await getFirebase(firebaseConfig);
+      await auth.signOut();
+      setActionMessage("You are signed out.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to sign out.";
+      setActionMessage(message);
+    }
+  };
+
+  const user = authState.user;
+  const showLoading = authState.phase === "loading";
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_20%_20%,#f2f0f4,transparent_30%),radial-gradient(circle_at_80%_10%,#eef6f6,transparent_28%),radial-gradient(circle_at_60%_70%,#f3f1f3,transparent_32%)] text-[#171c1b]">
       <header className="sticky top-0 z-10 backdrop-blur-md bg-white/70 border-b border-[#e6e2e9]">

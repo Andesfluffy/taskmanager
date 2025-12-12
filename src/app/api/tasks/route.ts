@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 
-import { fetchTasks, insertTask, updateTask } from "@/lib/mongodb";
+import { deleteTask, fetchTasks, insertTask, updateTask } from "@/lib/mongodb";
 
 type TaskRequestBody = {
   title?: string;
   description?: string;
-  completed?: boolean;
+  status?: "todo" | "doing" | "done";
+  priority?: "High" | "Medium" | "Low";
 };
 
 function badRequest(message: string) {
@@ -35,7 +36,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const task = await insertTask({ title: body.title, description: body.description });
+    const task = await insertTask({
+      title: body.title,
+      description: body.description,
+      status: body.status,
+      priority: body.priority,
+    });
     return NextResponse.json({ task }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to create the task.";
@@ -60,6 +66,27 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ updated: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to update the task.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  let body: { id?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return badRequest("Invalid JSON payload.");
+  }
+
+  if (!body.id || typeof body.id !== "string") {
+    return badRequest("A valid task id is required to delete.");
+  }
+
+  try {
+    await deleteTask(body.id);
+    return NextResponse.json({ deleted: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to delete the task.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

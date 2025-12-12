@@ -7,6 +7,7 @@ type TaskRequestBody = {
   description?: string;
   status?: "todo" | "doing" | "done";
   priority?: "High" | "Medium" | "Low";
+  completed?: boolean;
 };
 
 function badRequest(message: string) {
@@ -41,6 +42,7 @@ export async function POST(request: Request) {
       description: body.description,
       status: body.status,
       priority: body.priority,
+      completed: body.completed,
     });
     return NextResponse.json({ task }, { status: 201 });
   } catch (error) {

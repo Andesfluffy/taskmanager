@@ -20,6 +20,12 @@ type Task = {
   priority: "High" | "Medium" | "Low";
 };
 
+type ApiTask = Partial<Task> & {
+  id?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 type Toast = {
   id: string;
   tone: "success" | "error" | "info";
@@ -104,8 +110,8 @@ export default function TasksPage() {
 
     return {
       id: task.id ?? crypto.randomUUID(),
-      title: task.title ?? "",
-      description: task.description ?? "",
+      title: task.title?.trim() ?? "",
+      description: task.description?.trim?.() ?? "",
       status,
       completed,
       priority,
@@ -251,7 +257,13 @@ export default function TasksPage() {
     try {
       const data = await requestJson<{ task?: ApiTask }>("/api/tasks", {
         method: "POST",
-        body: JSON.stringify({ title: trimmedTitle, description: trimmedDescription, completed }),
+        body: JSON.stringify({
+          title: trimmedTitle,
+          description: trimmedDescription,
+          status,
+          completed,
+          priority: newTask.priority,
+        }),
       });
 
       const normalized = normalizeTask(data.task ?? { title: trimmedTitle, description: trimmedDescription, completed });
@@ -340,7 +352,14 @@ export default function TasksPage() {
     try {
       await requestJson("/api/tasks", {
         method: "PATCH",
-        body: JSON.stringify({ id, title: trimmedTitle, description: trimmedDescription, completed }),
+        body: JSON.stringify({
+          id,
+          title: trimmedTitle,
+          description: trimmedDescription,
+          status,
+          completed,
+          priority: editDraft.priority,
+        }),
       });
 
       setTasks((prev) =>

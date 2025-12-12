@@ -1,143 +1,197 @@
-const requiredEnv = [
-  "MONGODB_DATA_API_URL",
-  "MONGODB_DATA_API_KEY",
-  "MONGODB_DATA_SOURCE",
-  "MONGODB_DATABASE",
-] as const;
+import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
+
+const requiredEnv = ["MONGODB_URI", "MONGODB_DATABASE"] as const;
 
 type MongoEnv = Record<(typeof requiredEnv)[number], string>;
 
-type MongoDataApiResponse<T> = { document?: unknown; documents?: unknown[] } & T;
-
-type MongoId = { $oid: string } | string | undefined;
-
 export type TaskRecord = {
-  _id?: MongoId;
+  id: string;
   title: string;
-  description?: string;
+  description: string;
   status: "todo" | "doing" | "done";
+  completed: boolean;
   priority: "High" | "Medium" | "Low";
   createdAt: string;
   updatedAt: string;
 };
 
+type DbTaskRecord = {
+  _id: ObjectId;
+  title: string;
+  description: string;
+  status: TaskRecord["status"];
+  completed: boolean;
+  priority: TaskRecord["priority"];
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 function readMongoEnv(): MongoEnv {
   const env = {
-    MONGODB_DATA_API_URL: process.env.MONGODB_DATA_API_URL ?? "",
-    MONGODB_DATA_API_KEY: process.env.MONGODB_DATA_API_KEY ?? "",
-    MONGODB_DATA_SOURCE: process.env.MONGODB_DATA_SOURCE ?? "",
+    MONGODB_URI: process.env.MONGODB_URI ?? "",
     MONGODB_DATABASE: process.env.MONGODB_DATABASE ?? "",
   } satisfies MongoEnv;
 
   const missing = requiredEnv.filter((key) => !env[key]);
   if (missing.length) {
-    throw new Error(
-      `Missing MongoDB env var${missing.length > 1 ? "s" : ""}: ${missing
-        .map((key) => key.replace("MONGODB_DATA_API_URL", "MongoDB Data API URL"))
-        .join(", ")}`,
-    );
+    throw new Error(`Missing MongoDB env var${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}`);
   }
 
   return env;
 }
 
-async function callMongoDataApi<T>(action: string, payload: Record<string, unknown>) {
-  const env = readMongoEnv();
-  const response = await fetch(`${env.MONGODB_DATA_API_URL}/action/${action}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "api-key": env.MONGODB_DATA_API_KEY,
+const mongoEnv = readMongoEnv();
+
+let cachedClient: MongoClient | null = null;
+
+async function getMongoClient() {
+  if (cachedClient) return cachedClient;
+
+  const client = new MongoClient(mongoEnv.MONGODB_URI, {
+    serverApi: {
+      version: ServerApiVersion.v1,
+      strict: true,
+      deprecationErrors: true,
     },
-    body: JSON.stringify({
-      dataSource: env.MONGODB_DATA_SOURCE,
-      database: env.MONGODB_DATABASE,
-      ...payload,
-    }),
   });
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`MongoDB request failed (${response.status}): ${errorBody || response.statusText}`);
-  }
-
-  return (await response.json()) as MongoDataApiResponse<T>;
+  await client.connect();
+  cachedClient = client;
+  return cachedClient;
 }
 
-function normalizeId(id: MongoId) {
-  if (!id) return undefined;
-  if (typeof id === "string") return id;
-  if (typeof id === "object" && "$oid" in id) return id.$oid;
-  return undefined;
+function toObjectId(id: string) {
+  try {
+    return new ObjectId(id);
+  } catch {
+    throw new Error("Invalid task id.");
+  }
+}
+
+function alignStatusAndCompletion(status: TaskRecord["status"] | undefined, completed: boolean | undefined) {
+  if (completed || status === "done") {
+    return { status: "done" as const, completed: true };
+  }
+
+  if (status === "doing") {
+    return { status: "doing" as const, completed: false };
+  }
+
+  return { status: "todo" as const, completed: false };
+}
+
+function normalizeTask(doc: DbTaskRecord): TaskRecord {
+  const { status, completed } = alignStatusAndCompletion(doc.status, doc.completed);
+  const priority: TaskRecord["priority"] = ["High", "Low", "Medium"].includes(doc.priority)
+    ? doc.priority
+    : "Medium";
+
+  return {
+    id: doc._id.toHexString(),
+    title: doc.title,
+    description: doc.description ?? "",
+    status,
+    completed,
+    priority,
+    createdAt: doc.createdAt?.toISOString() ?? new Date().toISOString(),
+    updatedAt: doc.updatedAt?.toISOString() ?? new Date().toISOString(),
+  };
+}
+
+async function getTasksCollection() {
+  const client = await getMongoClient();
+  const db = client.db(mongoEnv.MONGODB_DATABASE);
+  return db.collection<DbTaskRecord>("tasks");
 }
 
 export async function fetchTasks() {
-  const result = await callMongoDataApi<{ documents: TaskRecord[] }>("find", {
-    collection: "tasks",
-    sort: { updatedAt: -1 },
-    limit: 100,
-  });
-
-  return (result.documents ?? []).map((doc) => ({
-    id: normalizeId(doc._id),
-    title: doc.title,
-    description: doc.description ?? "",
-    status: doc.status ?? "todo",
-    priority: doc.priority ?? "Medium",
-    createdAt: doc.createdAt,
-    updatedAt: doc.updatedAt,
-  }));
+  const collection = await getTasksCollection();
+  const docs = await collection.find({}).sort({ updatedAt: -1 }).limit(100).toArray();
+  return docs.map(normalizeTask);
 }
 
 export async function insertTask(input: {
   title: string;
   description?: string;
   status?: TaskRecord["status"];
+  completed?: boolean;
   priority?: TaskRecord["priority"];
 }) {
-  const now = new Date().toISOString();
-  const task: TaskRecord = {
-    title: input.title.trim(),
-    description: input.description?.trim() ?? "",
-    status: input.status ?? "todo",
-    priority: input.priority ?? "Medium",
+  const title = input.title?.trim();
+  if (!title) throw new Error("A task title is required.");
+
+  const description = input.description?.trim() ?? "";
+  const { status, completed } = alignStatusAndCompletion(input.status, input.completed);
+  const priority: TaskRecord["priority"] = ["High", "Low", "Medium"].includes(input.priority ?? "")
+    ? (input.priority as TaskRecord["priority"])
+    : "Medium";
+  const now = new Date();
+
+  const collection = await getTasksCollection();
+  const result = await collection.insertOne({
+    title,
+    description,
+    status,
+    completed,
+    priority,
     createdAt: now,
     updatedAt: now,
-  };
-
-  const result = await callMongoDataApi<{ insertedId?: MongoId }>("insertOne", {
-    collection: "tasks",
-    document: task,
   });
 
-  return { id: normalizeId(result.insertedId) ?? "", ...task };
+  return normalizeTask({
+    _id: result.insertedId,
+    title,
+    description,
+    status,
+    completed,
+    priority,
+    createdAt: now,
+    updatedAt: now,
+  });
 }
 
 export async function updateTask(
   id: string,
-  updates: Partial<Pick<TaskRecord, "title" | "description" | "status" | "priority">>,
+  updates: Partial<Pick<TaskRecord, "title" | "description" | "status" | "completed" | "priority">>,
 ) {
-  const sanitizedUpdates = {
-    ...(typeof updates.title === "string" ? { title: updates.title.trim() } : {}),
-    ...(typeof updates.description === "string" ? { description: updates.description.trim() } : {}),
-    ...(typeof updates.status === "string" ? { status: updates.status } : {}),
-    ...(typeof updates.priority === "string" ? { priority: updates.priority } : {}),
-  };
+  const collection = await getTasksCollection();
+  const _id = toObjectId(id);
+  const existing = await collection.findOne({ _id });
+  if (!existing) throw new Error("Task not found.");
 
-  if (!Object.keys(sanitizedUpdates).length) {
-    throw new Error("No valid fields provided to update the task.");
-  }
+  const title = typeof updates.title === "string" ? updates.title.trim() : existing.title;
+  const description = typeof updates.description === "string" ? updates.description.trim() : existing.description ?? "";
 
-  await callMongoDataApi("updateOne", {
-    collection: "tasks",
-    filter: { _id: { $oid: id } },
-    update: { $set: { ...sanitizedUpdates, updatedAt: new Date().toISOString() } },
-  });
+  const priority: TaskRecord["priority"] =
+    updates.priority && ["High", "Low", "Medium"].includes(updates.priority)
+      ? updates.priority
+      : existing.priority ?? "Medium";
+
+  const { status, completed } = alignStatusAndCompletion(
+    updates.status ?? existing.status,
+    typeof updates.completed === "boolean" ? updates.completed : existing.completed,
+  );
+
+  await collection.updateOne(
+    { _id },
+    {
+      $set: {
+        title,
+        description,
+        status,
+        completed,
+        priority,
+        updatedAt: new Date(),
+      },
+    },
+  );
 }
 
 export async function deleteTask(id: string) {
-  await callMongoDataApi("deleteOne", {
-    collection: "tasks",
-    filter: { _id: { $oid: id } },
-  });
+  const collection = await getTasksCollection();
+  const _id = toObjectId(id);
+  const result = await collection.deleteOne({ _id });
+  if (result.deletedCount === 0) {
+    throw new Error("Task not found.");
+  }
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -183,25 +182,6 @@ export default function Home() {
               ))}
             </div>
 
-            <div className="hidden overflow-hidden rounded-3xl bg-white/80 shadow-[0_22px_70px_rgba(10,41,38,0.12)] ring-1 ring-[#dbe8e6] lg:block">
-              <div className="grid grid-cols-[1fr_auto] items-center">
-                <div className="space-y-3 px-6 py-8">
-                  <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[#2f5653]">Workflow preview</p>
-                  <p className="text-2xl font-semibold text-[#0f2b2a]">Columns that keep work clear.</p>
-                  <p className="text-sm text-[#2f5653]">
-                    To-do, Doing, Done—organized with calm mint highlights so you can scan what matters in seconds.
-                  </p>
-                </div>
-                <Image
-                  alt="A minimal kanban board with mint highlights"
-                  className="h-full w-full max-w-xl rounded-l-3xl object-cover"
-                  height={420}
-                  src="https://images.unsplash.com/photo-1521737604893-d14cc237f11d?q=80&w=800&auto=format&fit=crop&ixlib=rb-4.1.0"
-                  width={800}
-                  priority
-                />
-              </div>
-            </div>
           </section>
 
           <section className="space-y-5 rounded-3xl bg-white/90 p-6 shadow-[0_22px_70px_rgba(10,41,38,0.12)] ring-1 ring-[#dbe8e6]">

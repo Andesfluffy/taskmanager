@@ -182,6 +182,16 @@ export default function TasksPage() {
     showToast({ tone: "success", title: "Task completed", description: "Marked as done." });
   };
 
+  const handleMarkComplete = (id: string) => {
+    setTasks((prev) => prev.map((task) => (task.id === id ? { ...task, status: "done" } : task)));
+    if (editingTaskId === id) {
+      setEditingTaskId(null);
+      setEditDraft(null);
+      setEditError(null);
+    }
+    showToast({ tone: "success", title: "Task completed", description: "Marked as done." });
+  };
+
   const handleEditStart = (task: Task) => {
     setEditingTaskId(task.id);
     setEditDraft({ title: task.title, status: task.status, priority: task.priority });
@@ -242,9 +252,6 @@ export default function TasksPage() {
     const statusOrder: Task["status"][] = ["todo", "doing", "done"];
     return [...tasks].sort((a, b) => statusOrder.indexOf(a.status) - statusOrder.indexOf(b.status));
   }, [tasks]);
-
-  const pendingTasks = useMemo(() => orderedTasks.filter((task) => task.status !== "done"), [orderedTasks]);
-  const completedTasks = useMemo(() => orderedTasks.filter((task) => task.status === "done"), [orderedTasks]);
 
   const renderTaskCard = (task: Task) => (
     <article key={task.id} className="rounded-xl bg-white px-3 py-3 shadow-sm ring-1 ring-[#dbe8e6]">
@@ -498,54 +505,17 @@ export default function TasksPage() {
               ))}
             </div>
           ) : (
-            <div className="mt-4 space-y-4">
-              <section className="rounded-2xl bg-[#f6fbf9] p-4 ring-1 ring-[#dbe8e6]">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.18em] text-[#2f5653]">Pending</p>
-                    <h3 className="text-lg font-semibold text-[#0f2b2a]">To do and in progress</h3>
-                  </div>
-                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#2f5653] shadow-sm ring-1 ring-[#d6ece8]">
-                    {pendingTasks.length} {pendingTasks.length === 1 ? "task" : "tasks"}
-                  </span>
+            <div className="mt-4 space-y-3">
+              {orderedTasks.length === 0 && (
+                <p className="rounded-xl bg-[#f6fbf9] px-4 py-3 text-sm text-[#2f5653] ring-1 ring-dashed ring-[#cde9e0]">
+                  No tasks yet. Add a few to see them here.
+                </p>
+              )}
+              {orderedTasks.map((task) => (
+                <div key={task.id} className="rounded-2xl bg-[#f6fbf9] p-3 ring-1 ring-[#dbe8e6]">
+                  {renderTaskCard(task)}
                 </div>
-                <div className="mt-3 space-y-3">
-                  {pendingTasks.length === 0 && (
-                    <p className="rounded-xl bg-white px-3 py-3 text-sm text-[#2f5653] ring-1 ring-dashed ring-[#cde9e0]">
-                      Nothing pending right now. Add a task to see it here.
-                    </p>
-                  )}
-                  {pendingTasks.map((task) => (
-                    <div key={task.id} className="rounded-xl bg-white p-3 ring-1 ring-[#dbe8e6]">
-                      {renderTaskCard(task)}
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              <section className="rounded-2xl bg-[#f6fbf9] p-4 ring-1 ring-[#dbe8e6]">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.18em] text-[#2f5653]">Completed</p>
-                    <h3 className="text-lg font-semibold text-[#0f2b2a]">Finished work</h3>
-                  </div>
-                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#2f5653] shadow-sm ring-1 ring-[#d6ece8]">
-                    {completedTasks.length} {completedTasks.length === 1 ? "task" : "tasks"}
-                  </span>
-                </div>
-                <div className="mt-3 space-y-3">
-                  {completedTasks.length === 0 && (
-                    <p className="rounded-xl bg-white px-3 py-3 text-sm text-[#2f5653] ring-1 ring-dashed ring-[#cde9e0]">
-                      Once you mark tasks as done, they will collect here.
-                    </p>
-                  )}
-                  {completedTasks.map((task) => (
-                    <div key={task.id} className="rounded-xl bg-white p-3 ring-1 ring-[#dbe8e6]">
-                      {renderTaskCard(task)}
-                    </div>
-                  ))}
-                </div>
-              </section>
+              ))}
             </div>
           )}
         </section>

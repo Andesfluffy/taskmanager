@@ -3,11 +3,29 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 ## Getting Started
 
 First, add the Firebase configuration so authentication works in the TaskManager UI. Copy the sample env file and fill in your
-Firebase project values:
+Firebase project values. The same file also holds MongoDB settings for the API endpoints:
 
 ```
 cp .env.local.example .env.local
 ```
+
+### MongoDB
+
+The `/api/tasks` endpoints use the MongoDB Atlas Data API so the app can create and read tasks without a server-side driver. Add
+your Data API credentials to `.env.local`:
+
+```
+MONGODB_DATA_API_URL=https://data.mongodb-api.com/app/your-app-id/endpoint/data/v1
+MONGODB_DATA_API_KEY=your_data_api_key
+MONGODB_DATA_SOURCE=Cluster0
+MONGODB_DATABASE=taskmanager
+```
+
+Endpoints:
+
+- `GET /api/tasks` – returns `{ tasks: Task[] }` from the `tasks` collection.
+- `POST /api/tasks` – create a task with `{ title, description? }` and returns the inserted record.
+- `PATCH /api/tasks` – update an existing task with `{ id, title?, description?, completed? }`.
 
 Then run the development server:
 

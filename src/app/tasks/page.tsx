@@ -14,7 +14,9 @@ type AuthState =
 type Task = {
   id: string;
   title: string;
+  description: string;
   status: "todo" | "doing" | "done";
+  completed: boolean;
   priority: "High" | "Medium" | "Low";
 };
 
@@ -58,14 +60,17 @@ export default function TasksPage() {
       : { phase: "loading" };
   });
   const [actionMessage, setActionMessage] = useState<string>("");
-  const [newTask, setNewTask] = useState<Pick<Task, "title" | "status" | "priority">>({
+  const [newTask, setNewTask] = useState<Pick<Task, "title" | "description" | "status" | "priority" | "completed">>({
     title: "",
+    description: "",
     status: "todo",
+    completed: false,
     priority: "Medium",
   });
   const [newTaskError, setNewTaskError] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState<Pick<Task, "title" | "status" | "priority"> | null>(null);
+  const [editDraft, setEditDraft] =
+    useState<Pick<Task, "title" | "description" | "status" | "priority" | "completed"> | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState<boolean>(false);
@@ -207,10 +212,14 @@ export default function TasksPage() {
     return false;
   };
 
-  const validateTaskFields = ({ title }: { title: string }) => {
+  const validateTaskFields = ({ title, description }: { title: string; description?: string }) => {
     const trimmed = title.trim();
     if (!trimmed) return "Title is required.";
-    if (trimmed.length < 3) return "Use at least 3 characters for the title.";
+
+    if (description !== undefined && typeof description !== "string") {
+      return "Description must be text.";
+    }
+
     return null;
   };
 
@@ -265,11 +274,9 @@ export default function TasksPage() {
       return;
     }
 
-    const creationStatus = newTask.status === "done" ? "todo" : newTask.status;
-    const adjustedDescription =
-      newTask.status === "done"
-        ? "New tasks start as pending. We saved this one to your to-do list."
-        : "The new task was created.";
+    const trimmedTitle = newTask.title.trim();
+    const trimmedDescription = newTask.description.trim();
+    const { status, completed } = syncStatusAndCompletion(newTask.status, newTask.completed || newTask.status === "done");
 
     try {
       const data = await requestJson<{ task: Task }>("/api/tasks", {
@@ -328,7 +335,13 @@ export default function TasksPage() {
     if (!enforceAuthenticatedActions()) return;
 
     setEditingTaskId(task.id);
-    setEditDraft({ title: task.title, status: task.status, priority: task.priority });
+    setEditDraft({
+      title: task.title,
+      description: task.description,
+      status: task.status,
+      completed: task.completed,
+      priority: task.priority,
+    });
     setEditError(null);
   };
 
@@ -337,7 +350,7 @@ export default function TasksPage() {
     if (!enforceAuthenticatedActions()) return;
 
     if (!editDraft) return;
-    const validationError = validateTaskFields({ title: editDraft.title });
+    const validationError = validateTaskFields({ title: editDraft.title, description: editDraft.description });
     if (validationError) {
       setEditError(validationError);
       showToast({ tone: "error", title: "Update blocked", description: validationError });
@@ -416,6 +429,7 @@ export default function TasksPage() {
         <div className="space-y-1">
           <p className="text-sm font-semibold text-[#0f2b2a]">{task.title}</p>
           <p className="text-xs text-[#2f5653]">{task.status === "todo" ? "Queued" : task.status === "doing" ? "In motion" : "Completed"}</p>
+          {task.description && <p className="text-xs text-[#1f4744]">{task.description}</p>}
         </div>
         <div className="flex flex-col items-end gap-2">
           <span className="rounded-full bg-[#ecf7f4] px-3 py-1 text-xs font-semibold text-[#2f5653]">{task.priority}</span>
@@ -438,6 +452,17 @@ export default function TasksPage() {
               disabled={!!interactionBlockedReason}
             />
           </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#2f5653]">Description</label>
+            <textarea
+              className="w-full rounded-lg border border-[#d6ece8] bg-white px-3 py-2 text-sm text-[#0f2b2a] shadow-sm focus:border-[#2ec4b6] focus:outline-none"
+              rows={3}
+              value={editDraft.description}
+              onChange={(event) =>
+                setEditDraft((prev) => (prev ? { ...prev, description: event.target.value } : prev))
+              }
+            />
+          </div>
           <div className="grid gap-2 sm:grid-cols-2">
             <div className="flex flex-col gap-1">
               <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#2f5653]">Status</label>
@@ -445,7 +470,12 @@ export default function TasksPage() {
                 className="w-full rounded-lg border border-[#d6ece8] bg-white px-3 py-2 text-sm text-[#0f2b2a] shadow-sm focus:border-[#2ec4b6] focus:outline-none"
                 value={editDraft.status}
                 onChange={(event) =>
-                  setEditDraft((prev) => prev ? { ...prev, status: event.target.value as Task["status"] } : prev)
+                  setEditDraft((prev) => {
+                    if (!prev) return prev;
+                    const nextStatus = event.target.value as Task["status"];
+                    const { status, completed } = syncStatusAndCompletion(nextStatus, prev.completed);
+                    return { ...prev, status, completed };
+                  })
                 }
                 disabled={!!interactionBlockedReason}
               >
@@ -470,6 +500,25 @@ export default function TasksPage() {
               </select>
             </div>
           </div>
+          <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#0f2b2a]">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-[#d6ece8] text-[#2ec4b6] focus:ring-1 focus:ring-[#2ec4b6]"
+              checked={editDraft.completed}
+              onChange={(event) =>
+                setEditDraft((prev) => {
+                  if (!prev) return prev;
+                  const completed = event.target.checked;
+                  const { status, completed: normalizedCompleted } = syncStatusAndCompletion(
+                    prev.status,
+                    completed,
+                  );
+                  return { ...prev, status, completed: normalizedCompleted };
+                })
+              }
+            />
+            Mark as completed
+          </label>
           {editError && <p className="text-xs text-[#c0392b]">{editError}</p>}
           <div className="flex flex-wrap gap-2">
             <button
@@ -576,6 +625,16 @@ export default function TasksPage() {
                 />
                 {newTaskError && <p className="text-xs text-[#c0392b]">{newTaskError}</p>}
               </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#2f5653]">Description</label>
+                <textarea
+                  className="w-full rounded-xl border border-[#d6ece8] bg-white px-3 py-2 text-sm text-[#0f2b2a] shadow-sm focus:border-[#2ec4b6] focus:outline-none"
+                  placeholder="Optional context for the task"
+                  rows={3}
+                  value={newTask.description}
+                  onChange={(event) => setNewTask((prev) => ({ ...prev, description: event.target.value }))}
+                />
+              </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#2f5653]">Status</label>
@@ -583,12 +642,17 @@ export default function TasksPage() {
                     className="w-full rounded-xl border border-[#d6ece8] bg-white px-3 py-2 text-sm text-[#0f2b2a] shadow-sm focus:border-[#2ec4b6] focus:outline-none"
                     value={newTask.status}
                     onChange={(event) =>
-                      setNewTask((prev) => ({ ...prev, status: event.target.value as Task["status"] }))
+                      setNewTask((prev) => {
+                        const nextStatus = event.target.value as Task["status"];
+                        const { status, completed } = syncStatusAndCompletion(nextStatus, prev.completed);
+                        return { ...prev, status, completed };
+                      })
                     }
                     disabled={!!interactionBlockedReason}
                   >
                     <option value="todo">To do</option>
                     <option value="doing">In progress</option>
+                    <option value="done">Done</option>
                   </select>
                 </div>
                 <div className="flex flex-col gap-1">
@@ -607,6 +671,24 @@ export default function TasksPage() {
                   </select>
                 </div>
               </div>
+              <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#0f2b2a]">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-[#d6ece8] text-[#2ec4b6] focus:ring-1 focus:ring-[#2ec4b6]"
+                  checked={newTask.completed}
+                  onChange={(event) =>
+                    setNewTask((prev) => {
+                      const completed = event.target.checked;
+                      const { status, completed: normalizedCompleted } = syncStatusAndCompletion(
+                        prev.status,
+                        completed,
+                      );
+                      return { ...prev, status, completed: normalizedCompleted };
+                    })
+                  }
+                />
+                Mark as completed
+              </label>
               <div className="flex items-center gap-3">
                 <button
                   type="submit"
@@ -619,7 +701,7 @@ export default function TasksPage() {
                   type="button"
                   className="rounded-full border border-[#d6ece8] px-4 py-2 text-sm font-semibold text-[#0f2b2a] transition hover:-translate-y-0.5 hover:shadow-sm"
                   onClick={() => {
-                    setNewTask({ title: "", status: "todo", priority: "Medium" });
+                    setNewTask({ title: "", description: "", status: "todo", completed: false, priority: "Medium" });
                     setNewTaskError(null);
                   }}
                   disabled={!!interactionBlockedReason}

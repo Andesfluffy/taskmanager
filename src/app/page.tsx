@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { getFirebaseEnv } from "@/lib/env";
 import { type FirebaseConfig, type FirebaseUser, getFirebase } from "@/lib/firebase-client";
@@ -30,6 +31,7 @@ try {
 }
 
 export default function Home() {
+  const router = useRouter();
   const missingConfig = useMemo(() => {
     if (!firebaseConfig) return ["Firebase configuration"];
 
@@ -102,23 +104,20 @@ export default function Home() {
   const showLoading = authState.phase === "loading";
   const hasError = authState.phase === "error";
 
-  const headlineBadge = (
-    <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-[#18413e] shadow-sm ring-1 ring-[#dce9e7]">
-      Calm task planning
-      <span className="h-2 w-2 rounded-full" style={{ background: palette.mint }} />
-    </div>
-  );
+  useEffect(() => {
+    if (authState.phase !== "ready" || !authState.user) return;
 
-  const statItems = [
-    { label: "Team clarity", value: "98%" },
-    { label: "Avg. response", value: "< 2m" },
-    { label: "Boards secured", value: "1,200+" },
-  ];
+    const timer = setTimeout(() => {
+      router.replace("/tasks");
+    }, 350);
 
-  const features = [
-    { title: "Priorities that stay visible", body: "Pin key work and never lose sight of what matters most." },
-    { title: "Lightweight collaboration", body: "Assign owners, add updates, and move on—no clutter." },
-    { title: "Confidence in access", body: "Google sign-in keeps every workspace private and ready." },
+    return () => clearTimeout(timer);
+  }, [authState, router]);
+
+  const promises = [
+    "Sign in with Google—no setup needed",
+    "Jump straight into the task manager",
+    "Keep the workspace private and clean",
   ];
 
   return (
@@ -146,13 +145,16 @@ export default function Home() {
 
         <main className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-start">
           <section className="space-y-8">
-            {headlineBadge}
+            <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-[#18413e] shadow-sm ring-1 ring-[#dce9e7]">
+              Focused flow
+              <span className="h-2 w-2 rounded-full" style={{ background: palette.mint }} />
+            </div>
             <div className="space-y-4">
               <h1 className="text-4xl font-semibold leading-tight text-[#0f2b2a] md:text-5xl">
-                A smoother home page for your tasks.
+                One click to your task manager.
               </h1>
               <p className="max-w-2xl text-lg text-[#2f5653]">
-                Build calm, professional momentum with a mint and white workspace. Keep every commitment visible and every teammate aligned before the day begins.
+                Sign in, land on the workspace, and get to work. No clutter—just the tasks that move the day forward.
               </p>
             </div>
             <div className="flex flex-wrap gap-4">
@@ -164,27 +166,19 @@ export default function Home() {
               >
                 {user ? "Sign out" : "Sign in with Google"}
               </button>
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#d6ece8] bg-white px-4 py-2 text-sm font-semibold text-[#2f5653]">
-                <span className="h-2 w-2 rounded-full" style={{ background: palette.mint }} />
-                Secure access powered by Firebase
-              </div>
+              <button
+                className="rounded-full border border-[#d6ece8] bg-white px-5 py-3 text-sm font-semibold text-[#0f2b2a] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-70"
+                onClick={() => router.push(user ? "/tasks" : "/")}
+                disabled={showLoading || hasError}
+              >
+                {user ? "Open task manager" : "Access requires sign in"}
+              </button>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-3">
-              {statItems.map((stat) => (
-                <div key={stat.label} className="rounded-2xl bg-white/90 p-4 shadow-sm ring-1 ring-[#dbe8e6]">
-                  <p className="text-2xl font-semibold text-[#0f2b2a]">{stat.value}</p>
-                  <p className="text-sm text-[#2f5653]">{stat.label}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-3">
-              {features.map((feature) => (
-                <div key={feature.title} className="flex flex-col gap-2 rounded-2xl bg-white/90 p-4 shadow-sm ring-1 ring-[#dbe8e6]">
-                  <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#66e0cc] via-[#3cd3ba] to-[#1da68a]" />
-                  <p className="text-base font-semibold text-[#0f2b2a]">{feature.title}</p>
-                  <p className="text-sm text-[#2f5653]">{feature.body}</p>
+              {promises.map((promise) => (
+                <div key={promise} className="rounded-2xl bg-white/90 p-4 text-sm font-semibold text-[#0f2b2a] shadow-sm ring-1 ring-[#dbe8e6]">
+                  {promise}
                 </div>
               ))}
             </div>

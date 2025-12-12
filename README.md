@@ -2,13 +2,11 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, add the Firebase configuration so authentication works in the TaskManager UI:
+First, add the Firebase configuration so authentication works in the TaskManager UI. Copy the sample env file and fill in your
+Firebase project values:
 
 ```
-NEXT_PUBLIC_FIREBASE_API_KEY=...
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=...
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=...
-NEXT_PUBLIC_FIREBASE_APP_ID=...
+cp .env.local.example .env.local
 ```
 
 Then run the development server:

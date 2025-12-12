@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 
+import { getFirebaseEnv } from "@/lib/env";
 import { type FirebaseConfig, type FirebaseUser, getFirebase } from "@/lib/firebase-client";
 
 type AuthState =
@@ -17,34 +18,41 @@ const palette = {
   granite200: "#e8ecec",
 };
 
-const firebaseConfig: FirebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? "",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN ?? "",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID ?? "",
-};
+let firebaseConfig: FirebaseConfig | undefined;
+let firebaseEnvError: string | undefined;
+
+try {
+  firebaseConfig = getFirebaseEnv();
+} catch (error) {
+  firebaseEnvError = error instanceof Error ? error.message : "Unable to read Firebase env vars.";
+  firebaseConfig = undefined;
+}
 
 export default function Home() {
-  const missingConfig = useMemo(
-    () =>
-      Object.entries(firebaseConfig)
-        .filter(([, value]) => !value)
-        .map(([key]) => key.replace("authDomain", "auth domain")),
-    [],
-  );
+  const missingConfig = useMemo(() => {
+    if (!firebaseConfig) return ["Firebase configuration"];
 
-  const [authState, setAuthState] = useState<AuthState>(() =>
-    missingConfig.length > 0
+    return Object.entries(firebaseConfig)
+      .filter(([, value]) => !value)
+      .map(([key]) => key.replace("authDomain", "auth domain"));
+  }, []);
+
+  const [authState, setAuthState] = useState<AuthState>(() => {
+    if (firebaseEnvError) {
+      return { phase: "error", message: firebaseEnvError };
+    }
+
+    return missingConfig.length > 0
       ? {
           phase: "error",
           message: `Add the missing Firebase env vars: ${missingConfig.join(", ")}`,
         }
-      : { phase: "loading" },
-  );
+      : { phase: "loading" };
+  });
   const [actionMessage, setActionMessage] = useState<string>("");
 
   useEffect(() => {
-    if (missingConfig.length > 0) return undefined;
+    if (missingConfig.length > 0 || !firebaseConfig) return undefined;
 
     let unsubscribe: (() => void) | undefined;
 

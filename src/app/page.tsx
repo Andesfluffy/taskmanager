@@ -1,638 +1,393 @@
-"use client";
+const palette = {
+  lilac500: "#816e91",
+  lilac300: "#b4a8bd",
+  lilac800: "#342c3a",
+  dusty400: "#a2909d",
+  dusty200: "#d1c7ce",
+  dusty800: "#382e35",
+  granite100: "#e3e8e7",
+  granite400: "#8ea4a0",
+  granite900: "#171c1b",
+  slate400: "#79b9b3",
+};
 
-import { useEffect, useMemo, useState } from "react";
-
-interface Task {
-  id: string;
-  title: string;
-  description: string;
-  status: TaskStatus;
-  priority: TaskPriority;
-  dueDate: string;
-}
-
-const statusOptions = [
-  "Backlog",
-  "In Progress",
-  "Blocked",
-  "Ready",
-  "Done",
-] as const;
-
-type TaskStatus = (typeof statusOptions)[number];
-type TaskPriority = "Low" | "Medium" | "High";
-
-type ToastVariant = "success" | "info" | "warning" | "error";
-
-interface ToastMessage {
-  id: string;
-  message: string;
-  variant: ToastVariant;
-}
-
-interface Confirmation {
-  id: string;
-  title: string;
-  body: string;
-  confirmLabel: string;
-  onConfirm: () => void;
-}
-
-const demoTasks: Task[] = [
+const featureCards = [
   {
-    id: "1",
-    title: "Set up project workspace",
-    description: "Align environments, install dependencies, and prepare CI.",
-    status: "Ready",
-    priority: "High",
-    dueDate: new Date().toISOString().slice(0, 10),
+    title: "Plan with confidence",
+    description:
+      "Prioritize projects, set milestones, and lock in deadlines with clear ownership so nothing slips.",
+    accent: palette.lilac500,
   },
   {
-    id: "2",
-    title: "Design task detail view",
-    description: "Capture CRUD flows, validation, and audit needs.",
-    status: "In Progress",
-    priority: "Medium",
-    dueDate: new Date(Date.now() + 86400000 * 2).toISOString().slice(0, 10),
+    title: "Automate the busywork",
+    description:
+      "Recurring workflows, smart reminders, and status digests keep your team in sync without chasing updates.",
+    accent: palette.slate400,
   },
   {
-    id: "3",
-    title: "Refine backlog triage",
-    description: "Agree on definition of ready and attach owners.",
-    status: "Backlog",
-    priority: "Low",
-    dueDate: new Date(Date.now() + 86400000 * 5).toISOString().slice(0, 10),
+    title: "Stay aligned",
+    description:
+      "Share roadmaps, approvals, and decisions in one place with branded notes and stakeholder read receipts.",
+    accent: palette.dusty400,
   },
 ];
 
-function badgeStyles(status: TaskStatus) {
-  switch (status) {
-    case "Backlog":
-      return "bg-slate-100 text-slate-700";
-    case "In Progress":
-      return "bg-blue-100 text-blue-700";
-    case "Blocked":
-      return "bg-amber-100 text-amber-800";
-    case "Ready":
-      return "bg-emerald-100 text-emerald-700";
-    case "Done":
-      return "bg-gray-100 text-gray-700";
-  }
-}
-
-function priorityStyles(priority: TaskPriority) {
-  switch (priority) {
-    case "Low":
-      return "text-emerald-700 bg-emerald-50";
-    case "Medium":
-      return "text-blue-700 bg-blue-50";
-    case "High":
-      return "text-rose-700 bg-rose-50";
-  }
-}
-
-function Toast({
-  toast,
-  onClose,
-}: {
-  toast: ToastMessage;
-  onClose: (id: string) => void;
-}) {
-  useEffect(() => {
-    const timer = setTimeout(() => onClose(toast.id), 3200);
-    return () => clearTimeout(timer);
-  }, [toast.id, onClose]);
-
-  const base =
-    "shadow-lg rounded-lg border px-4 py-3 text-sm flex items-center gap-2";
-
-  const variantClass: Record<ToastVariant, string> = {
-    success: "bg-emerald-50 border-emerald-200 text-emerald-900",
-    info: "bg-sky-50 border-sky-200 text-sky-900",
-    warning: "bg-amber-50 border-amber-200 text-amber-900",
-    error: "bg-rose-50 border-rose-200 text-rose-900",
-  };
-
-  const icon: Record<ToastVariant, string> = {
-    success: "✓",
-    info: "ℹ",
-    warning: "!",
-    error: "✕",
-  };
-
-  return (
-    <div className={`${base} ${variantClass[toast.variant]}`}>
-      <span className="font-semibold">{icon[toast.variant]}</span>
-      <p className="flex-1 leading-tight">{toast.message}</p>
-      <button
-        onClick={() => onClose(toast.id)}
-        className="text-xs font-semibold uppercase tracking-wide"
-      >
-        Close
-      </button>
-    </div>
-  );
-}
-
-function ToastRegion({
-  toasts,
-  dismiss,
-}: {
-  toasts: ToastMessage[];
-  dismiss: (id: string) => void;
-}) {
-  return (
-    <div className="fixed right-4 top-4 z-50 flex w-80 flex-col gap-3">
-      {toasts.map((toast) => (
-        <Toast key={toast.id} toast={toast} onClose={dismiss} />
-      ))}
-    </div>
-  );
-}
-
-function ConfirmationModal({
-  confirmation,
-  onCancel,
-}: {
-  confirmation: Confirmation | null;
-  onCancel: () => void;
-}) {
-  if (!confirmation) return null;
-
-  return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
-        <h2 className="text-xl font-semibold text-gray-900">
-          {confirmation.title}
-        </h2>
-        <p className="mt-2 text-sm text-gray-600">{confirmation.body}</p>
-        <div className="mt-6 flex items-center justify-end gap-3">
-          <button
-            onClick={onCancel}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => {
-              confirmation.onConfirm();
-              onCancel();
-            }}
-            className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-700"
-          >
-            {confirmation.confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+const perks = [
+  "AI summaries that surface blockers in seconds",
+  "Kanban, calendar, and workload views built in",
+  "Branded client portals with live progress",
+  "Enterprise-grade permissions and audit trails",
+];
 
 export default function Home() {
-  const [tasks, setTasks] = useState<Task[]>(() => {
-    if (typeof window === "undefined") return demoTasks;
-    const saved = window.localStorage.getItem("task-manager:data");
-    return saved ? JSON.parse(saved) : demoTasks;
-  });
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<TaskStatus | "All">("All");
-  const [formData, setFormData] = useState<Partial<Task>>({
-    title: "",
-    description: "",
-    status: "Ready",
-    priority: "Medium",
-    dueDate: new Date().toISOString().slice(0, 10),
-  });
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
+  const missingConfig = useMemo(
+    () =>
+      Object.entries(firebaseConfig)
+        .filter(([, value]) => !value)
+        .map(([key]) => key.replace("authDomain", "auth domain")),
+    [],
+  );
+
+  const [authState, setAuthState] = useState<AuthState>(() =>
+    missingConfig.length > 0
+      ? {
+          phase: "error",
+          message: `Add the missing Firebase env vars: ${missingConfig.join(", ")}`,
+        }
+      : { phase: "loading" },
+  );
+  const [actionMessage, setActionMessage] = useState<string>("");
 
   useEffect(() => {
-    window.localStorage.setItem("task-manager:data", JSON.stringify(tasks));
-  }, [tasks]);
+    if (missingConfig.length > 0) return undefined;
 
-  const addToast = (message: string, variant: ToastVariant = "info") => {
-    setToasts((prev) => [
-      ...prev,
-      { id: crypto.randomUUID(), message, variant },
-    ]);
-  };
+    let unsubscribe: (() => void) | undefined;
 
-  const dismissToast = (id: string) => {
-    setToasts((prev) => prev.filter((toast) => toast.id !== id));
-  };
+    getFirebase(firebaseConfig)
+      .then(({ auth }) => {
+        unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
+          setAuthState({
+            phase: "ready",
+            user: firebaseUser ?? undefined,
+          });
+        });
+      })
+      .catch((error: Error) => {
+        setAuthState({ phase: "error", message: error.message });
+      });
 
-  const filteredTasks = useMemo(() => {
-    return tasks
-      .filter((task) =>
-        statusFilter === "All" ? true : task.status === statusFilter,
-      )
-      .filter((task) =>
-        task.title.toLowerCase().includes(search.toLowerCase()) ||
-        task.description.toLowerCase().includes(search.toLowerCase()),
-      )
-      .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-  }, [tasks, search, statusFilter]);
+    return () => unsubscribe?.();
+  }, [missingConfig]);
 
-  const stats = useMemo(() => {
-    const total = tasks.length;
-    const done = tasks.filter((task) => task.status === "Done").length;
-    const inFlight = tasks.filter((task) => task.status === "In Progress").length;
-    const blocked = tasks.filter((task) => task.status === "Blocked").length;
-    return { total, done, inFlight, blocked };
-  }, [tasks]);
-
-  const resetForm = () => {
-    setFormData({
-      title: "",
-      description: "",
-      status: "Ready",
-      priority: "Medium",
-      dueDate: new Date().toISOString().slice(0, 10),
-    });
-    setEditingId(null);
-  };
-
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!formData.title?.trim()) {
-      addToast("Title is required to create a task", "warning");
-      return;
+  const handleGoogleSignIn = async () => {
+    setActionMessage("Signing you in with Google…");
+    try {
+      const { firebase, auth } = await getFirebase(firebaseConfig);
+      const provider = new firebase.auth.GoogleAuthProvider();
+      await auth.signInWithPopup(provider);
+      setActionMessage("Welcome back! Redirecting to your tasks.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to sign in right now.";
+      setActionMessage(message);
     }
-    if (!formData.dueDate) {
-      addToast("Please set a due date", "warning");
-      return;
+  };
+
+  const handleSignOut = async () => {
+    setActionMessage("Signing you out…");
+    try {
+      const { auth } = await getFirebase(firebaseConfig);
+      await auth.signOut();
+      setActionMessage("You are signed out.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to sign out.";
+      setActionMessage(message);
     }
-
-    if (editingId) {
-      setTasks((prev) =>
-        prev.map((task) =>
-          task.id === editingId ? ({ ...task, ...formData } as Task) : task,
-        ),
-      );
-      addToast("Task updated successfully", "success");
-    } else {
-      const newTask: Task = {
-        id: crypto.randomUUID(),
-        title: formData.title!,
-        description: formData.description?.trim() || "No description provided",
-        status: (formData.status as TaskStatus) || "Ready",
-        priority: (formData.priority as TaskPriority) || "Medium",
-        dueDate: formData.dueDate,
-      };
-      setTasks((prev) => [...prev, newTask]);
-      addToast("Task created", "success");
-    }
-    resetForm();
   };
 
-  const queueDelete = (task: Task) => {
-    setConfirmation({
-      id: task.id,
-      title: "Delete task?",
-      body: `This will permanently remove “${task.title}” and its activity.`,
-      confirmLabel: "Delete",
-      onConfirm: () => {
-        setTasks((prev) => prev.filter((item) => item.id !== task.id));
-        addToast("Task deleted", "info");
-      },
-    });
-  };
-
-  const startEdit = (task: Task) => {
-    setEditingId(task.id);
-    setFormData({ ...task });
-  };
-
-  const handleStatusChange = (task: Task, status: TaskStatus) => {
-    setTasks((prev) =>
-      prev.map((item) => (item.id === task.id ? { ...item, status } : item)),
-    );
-    addToast(`Status set to ${status}`, "success");
-  };
-
-  const handlePriorityChange = (task: Task, priority: TaskPriority) => {
-    setTasks((prev) =>
-      prev.map((item) => (item.id === task.id ? { ...item, priority } : item)),
-    );
-    addToast(`Priority set to ${priority}`, "info");
-  };
-
-  const resetDemo = () => {
-    setTasks(demoTasks);
-    addToast("Restored demo tasks", "info");
-    resetForm();
-  };
+  const user = authState.user;
+  const showLoading = authState.phase === "loading";
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 text-gray-900">
-      <ToastRegion toasts={toasts} dismiss={dismissToast} />
-      <ConfirmationModal
-        confirmation={confirmation}
-        onCancel={() => setConfirmation(null)}
-      />
-      <header className="border-b bg-white/70 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-6 py-6 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-sky-700">Task Manager</p>
-            <h1 className="text-3xl font-bold tracking-tight text-gray-900">
-              High-trust, high-clarity workboard
-            </h1>
-            <p className="text-sm text-gray-600">
-              CRUD-first experience with confirmations, toasts, and live status.
-            </p>
+    <div className="min-h-screen bg-[radial-gradient(circle_at_20%_20%,#f2f0f4,transparent_30%),radial-gradient(circle_at_80%_10%,#eef6f6,transparent_28%),radial-gradient(circle_at_60%_70%,#f3f1f3,transparent_32%)] text-[#171c1b]">
+      <header className="sticky top-0 z-10 backdrop-blur-md bg-white/70 border-b border-[#e6e2e9]">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-2xl" style={{ background: palette.lilac500 }} />
+            <div className="leading-tight">
+              <p className="text-xs uppercase tracking-[0.2em] text-[#534650]">Omnick</p>
+              <p className="text-lg font-semibold text-[#342c3a]">Task Manager</p>
+            </div>
+          </div>
+          <div className="hidden gap-6 text-sm font-medium text-[#4e4257] md:flex">
+            <a className="hover:text-[#342c3a]" href="#features">Features</a>
+            <a className="hover:text-[#342c3a]" href="#workflow">Workflow</a>
+            <a className="hover:text-[#342c3a]" href="#brand">Brand kit</a>
           </div>
           <div className="flex items-center gap-3">
+            <button className="hidden rounded-full border border-[#cdc5d3] px-4 py-2 text-sm font-semibold text-[#4e4257] transition hover:-translate-y-0.5 hover:border-[#816e91] md:inline-flex">
+              Live demo
+            </button>
             <button
-              onClick={resetDemo}
-              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+              className="rounded-full px-5 py-2 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(52,44,58,0.18)] transition hover:-translate-y-0.5"
+              style={{ background: `linear-gradient(135deg, ${palette.lilac500}, ${palette.slate400})` }}
             >
-              Reset demo data
+              Get started
             </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-8">
-        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <article className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-            <p className="text-sm text-gray-500">Open work</p>
-            <p className="mt-2 text-3xl font-bold text-gray-900">{stats.total}</p>
-            <p className="text-xs text-gray-500">Including planned and active</p>
-          </article>
-          <article className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-            <p className="text-sm text-gray-500">In progress</p>
-            <p className="mt-2 text-3xl font-bold text-blue-700">{stats.inFlight}</p>
-            <p className="text-xs text-gray-500">Shipping now</p>
-          </article>
-          <article className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-            <p className="text-sm text-gray-500">Blocked</p>
-            <p className="mt-2 text-3xl font-bold text-amber-700">{stats.blocked}</p>
-            <p className="text-xs text-gray-500">Needs escalation</p>
-          </article>
-          <article className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-            <p className="text-sm text-gray-500">Completed</p>
-            <p className="mt-2 text-3xl font-bold text-emerald-700">{stats.done}</p>
-            <p className="text-xs text-gray-500">Marked done</p>
-          </article>
-        </section>
-
-        <section className="grid gap-6 lg:grid-cols-5">
-          <div className="lg:col-span-2">
-            <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-sky-700">{editingId ? "Update task" : "Create task"}</p>
-                  <h2 className="text-xl font-semibold text-gray-900">
-                    {editingId ? "Edit task details" : "Add a new task"}
-                  </h2>
-                  <p className="text-sm text-gray-500">
-                    {editingId
-                      ? "Save edits with validation and live persistence."
-                      : "Capture the work with required metadata."}
-                  </p>
+      <main className="mx-auto flex max-w-6xl flex-col gap-20 px-6 py-16 md:py-24">
+        <section className="grid items-center gap-12 md:grid-cols-[1.1fr_0.9fr]">
+          <div className="space-y-6">
+            <div className="inline-flex items-center gap-2 rounded-full bg-white/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#534650] shadow-sm ring-1 ring-[#e6e2e9]">
+              Crafted for modern teams
+              <span className="h-2 w-2 rounded-full" style={{ background: palette.slate400 }} />
+            </div>
+            <div className="space-y-4">
+              <h1 className="text-4xl font-semibold leading-[1.1] text-[#1a161d] md:text-5xl">
+                Build a task manager with real craftsmanship and a brand your clients remember.
+              </h1>
+              <p className="max-w-2xl text-lg text-[#534650]">
+                Omnick blends thoughtful planning, automation, and beautiful reporting so your team can deliver with clarity
+                and calm. Design a landing page that feels premium from day one.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <button
+                className="rounded-full px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl"
+                style={{ background: palette.lilac800 }}
+              >
+                Start your workspace
+              </button>
+              <button className="rounded-full border border-[#cdc5d3] bg-white px-6 py-3 text-sm font-semibold text-[#342c3a] transition hover:-translate-y-0.5 hover:border-[#816e91]">
+                View pricing
+              </button>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {perks.map((perk) => (
+                <div key={perk} className="flex items-start gap-3 rounded-2xl bg-white/80 p-4 shadow-sm ring-1 ring-[#e6e2e9]">
+                  <span className="mt-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: palette.slate400 }}>
+                    ✓
+                  </span>
+                  <p className="text-sm text-[#382e35]">{perk}</p>
                 </div>
-                {editingId && (
-                  <button
-                    onClick={resetForm}
-                    className="text-sm font-semibold text-sky-700 hover:text-sky-800"
-                  >
-                    Cancel edit
-                  </button>
-                )}
-              </div>
-              <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-                <div>
-                  <label className="text-sm font-medium text-gray-700" htmlFor="title">
-                    Title
-                  </label>
-                  <input
-                    id="title"
-                    name="title"
-                    value={formData.title}
-                    onChange={(event) =>
-                      setFormData((prev) => ({ ...prev, title: event.target.value }))
-                    }
-                    className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm shadow-inner focus:border-sky-500 focus:outline-none"
-                    placeholder="Summarize the task"
-                    required
-                  />
-                </div>
-                <div>
-                  <label
-                    className="text-sm font-medium text-gray-700"
-                    htmlFor="description"
-                  >
-                    Description
-                  </label>
-                  <textarea
-                    id="description"
-                    name="description"
-                    value={formData.description}
-                    onChange={(event) =>
-                      setFormData((prev) => ({ ...prev, description: event.target.value }))
-                    }
-                    rows={3}
-                    className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm shadow-inner focus:border-sky-500 focus:outline-none"
-                    placeholder="What does success look like?"
-                  />
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="flex flex-col">
-                    <label className="text-sm font-medium text-gray-700" htmlFor="status">
-                      Status
-                    </label>
-                    <select
-                      id="status"
-                      value={formData.status}
-                      onChange={(event) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          status: event.target.value as TaskStatus,
-                        }))
-                      }
-                      className="mt-2 rounded-lg border border-gray-200 px-3 py-2 text-sm shadow-inner focus:border-sky-500 focus:outline-none"
-                    >
-                      {statusOptions.map((status) => (
-                        <option key={status} value={status}>
-                          {status}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex flex-col">
-                    <label className="text-sm font-medium text-gray-700" htmlFor="priority">
-                      Priority
-                    </label>
-                    <select
-                      id="priority"
-                      value={formData.priority}
-                      onChange={(event) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          priority: event.target.value as TaskPriority,
-                        }))
-                      }
-                      className="mt-2 rounded-lg border border-gray-200 px-3 py-2 text-sm shadow-inner focus:border-sky-500 focus:outline-none"
-                    >
-                      {(["Low", "Medium", "High"] as TaskPriority[]).map((priority) => (
-                        <option key={priority} value={priority}>
-                          {priority}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700" htmlFor="dueDate">
-                    Due date
-                  </label>
-                  <input
-                    id="dueDate"
-                    type="date"
-                    value={formData.dueDate}
-                    onChange={(event) =>
-                      setFormData((prev) => ({ ...prev, dueDate: event.target.value }))
-                    }
-                    className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm shadow-inner focus:border-sky-500 focus:outline-none"
-                    required
-                  />
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="submit"
-                    className="inline-flex flex-1 items-center justify-center rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700"
-                  >
-                    {editingId ? "Save changes" : "Create task"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={resetForm}
-                    className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
-                  >
-                    Clear
-                  </button>
-                </div>
-              </form>
+              ))}
             </div>
           </div>
 
-          <div className="lg:col-span-3">
-            <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-              <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative overflow-hidden rounded-[32px] bg-white/90 p-6 shadow-[0_20px_80px_rgba(26,22,29,0.08)] ring-1 ring-[#e6e2e9]">
+            <div
+              className="absolute inset-0 opacity-80"
+              style={{
+                background:
+                  "radial-gradient(circle at 20% 20%, rgba(129,110,145,0.15), transparent 35%), radial-gradient(circle at 80% 10%, rgba(88,167,160,0.15), transparent 32%), radial-gradient(circle at 60% 80%, rgba(58, 44, 58, 0.1), transparent 40%)",
+              }}
+            />
+            <div className="relative space-y-4">
+              <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-sky-700">Tasks</p>
-                  <h2 className="text-xl font-semibold text-gray-900">Backlog and active</h2>
+                  <p className="text-xs uppercase tracking-[0.2em] text-[#6f5d6a]">Active projects</p>
+                  <p className="text-2xl font-semibold text-[#1a161d]">Q3 launch calendar</p>
                 </div>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm">
-                    <span className="text-gray-400">🔎</span>
-                    <input
-                      value={search}
-                      onChange={(event) => setSearch(event.target.value)}
-                      placeholder="Search by title or description"
-                      className="w-full bg-transparent text-gray-700 outline-none"
-                    />
-                  </div>
-                  <select
-                    value={statusFilter}
-                    onChange={(event) =>
-                      setStatusFilter(event.target.value as TaskStatus | "All")
-                    }
-                    className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 shadow-sm"
-                  >
-                    <option value="All">All statuses</option>
-                    {statusOptions.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <span className="rounded-full px-3 py-1 text-xs font-semibold text-white" style={{ background: palette.slate400 }}>
+                  On track
+                </span>
               </div>
-
-              <div className="mt-4 space-y-3">
-                {filteredTasks.length === 0 && (
-                  <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-600">
-                    No tasks match your filters. Create a task to get started.
-                  </p>
-                )}
-                {filteredTasks.map((task) => (
-                  <article
-                    key={task.id}
-                    className="group rounded-xl border border-gray-100 bg-white px-4 py-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                  >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badgeStyles(task.status)}`}>
-                            {task.status}
-                          </span>
-                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${priorityStyles(task.priority)}`}>
-                            {task.priority} priority
-                          </span>
-                          <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
-                            Due {task.dueDate}
-                          </span>
+              <div className="grid gap-3 text-sm text-[#342c3a]">
+                {["Experience revamp", "Mobile edge", "Performance uplift", "Client onboarding"]
+                  .map((item, idx) => (
+                    <div
+                      key={item}
+                      className="flex items-center justify-between rounded-2xl bg-white/80 px-4 py-3 ring-1 ring-[#e6e2e9]"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-xl" style={{ background: idx % 2 === 0 ? palette.dusty200 : palette.granite100 }} />
+                        <div>
+                          <p className="font-semibold text-[#1a161d]">{item}</p>
+                          <p className="text-xs text-[#6f5d6a]">Owner • Due in {10 + idx * 4} days</p>
                         </div>
-                        <h3 className="text-lg font-semibold text-gray-900">{task.title}</h3>
-                        <p className="max-w-3xl text-sm text-gray-600">{task.description}</p>
                       </div>
-                      <div className="flex flex-col gap-3 sm:items-end">
-                        <div className="flex flex-wrap gap-2">
-                          <select
-                            value={task.status}
-                            onChange={(event) =>
-                              handleStatusChange(task, event.target.value as TaskStatus)
-                            }
-                            className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 shadow-sm"
-                          >
-                            {statusOptions.map((status) => (
-                              <option key={status} value={status}>
-                                {status}
-                              </option>
-                            ))}
-                          </select>
-                          <select
-                            value={task.priority}
-                            onChange={(event) =>
-                              handlePriorityChange(
-                                task,
-                                event.target.value as TaskPriority,
-                              )
-                            }
-                            className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 shadow-sm"
-                          >
-                            {(["Low", "Medium", "High"] as TaskPriority[]).map((priority) => (
-                              <option key={priority} value={priority}>
-                                {priority}
-                              </option>
-                            ))}
-                          </select>
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 w-16 overflow-hidden rounded-full bg-[#f2f0f4]">
+                          <div
+                            className="h-full"
+                            style={{ width: `${60 + idx * 10}%`, background: idx % 2 === 0 ? palette.lilac500 : palette.slate400 }}
+                          />
                         </div>
-                        <div className="flex gap-2 text-sm font-medium">
-                          <button
-                            onClick={() => startEdit(task)}
-                            className="rounded-lg bg-gray-100 px-3 py-2 text-gray-700 hover:bg-gray-200"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => queueDelete(task)}
-                            className="rounded-lg bg-rose-50 px-3 py-2 text-rose-700 hover:bg-rose-100"
-                          >
-                            Delete
-                          </button>
-                        </div>
+                        <span className="text-xs font-semibold text-[#534650]">{60 + idx * 10}%</span>
                       </div>
                     </div>
-                  </article>
+                  ))}
+              </div>
+              <div className="rounded-2xl bg-[#f2f0f4]/80 p-4 text-sm text-[#382e35] ring-1 ring-[#e6e2e9]">
+                <p className="font-semibold text-[#1a161d]">Weekly digest</p>
+                <p className="mt-1 text-[#4e4257]">
+                  Dependencies cleared for onboarding stream. Two blockers flagged for the mobile edge crew — ETA tomorrow.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="features" className="space-y-6 rounded-[32px] bg-white/80 p-8 shadow-[0_14px_50px_rgba(26,22,29,0.06)] ring-1 ring-[#e6e2e9]">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-[#6f5d6a]">Why Omnick</p>
+              <h2 className="text-3xl font-semibold text-[#1a161d]">A landing page that sells the workflow</h2>
+              <p className="max-w-2xl text-[#534650]">
+                Showcase the product story with confident typography, bespoke color blocking, and screenshots that feel crafted.
+                Every section below is built from the palette you shared for a consistent brand language.
+              </p>
+            </div>
+            <button className="inline-flex items-center gap-2 rounded-full bg-[#342c3a] px-5 py-3 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5">
+              Download brand kit
+              <span className="text-base">↗</span>
+            </button>
+          </div>
+          <div className="grid gap-6 md:grid-cols-3">
+            {featureCards.map((card) => (
+              <div
+                key={card.title}
+                className="flex h-full flex-col justify-between rounded-3xl bg-white p-6 shadow-[0_10px_30px_rgba(26,22,29,0.05)] ring-1 ring-[#e6e2e9]"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="h-10 w-10 rounded-2xl" style={{ background: card.accent }} />
+                  <h3 className="text-lg font-semibold text-[#1a161d]">{card.title}</h3>
+                </div>
+                <p className="mt-4 text-sm text-[#534650]">{card.description}</p>
+                <a className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-[#4e4257]" href="#">
+                  See details <span className="text-base">→</span>
+                </a>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section id="workflow" className="grid gap-10 rounded-[32px] bg-[#f2f0f4]/70 p-8 ring-1 ring-[#e6e2e9] md:grid-cols-[1.1fr_0.9fr]">
+          <div className="space-y-4">
+            <p className="text-xs uppercase tracking-[0.2em] text-[#6f5d6a]">Workflow preview</p>
+            <h3 className="text-3xl font-semibold text-[#1a161d]">How your landing page guides the story</h3>
+            <p className="text-[#534650]">
+              Use layered sections to introduce the brand, spotlight automation, and reassure clients with transparent delivery.
+              Pair hero messaging with proof points, show the dashboard, then end with a polished call-to-action.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {["Hero + proof", "Workflow highlights", "Testimonials", "CTA"]
+                .map((item) => (
+                  <div key={item} className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-[#342c3a] shadow-sm ring-1 ring-[#e6e2e9]">
+                    {item}
+                  </div>
                 ))}
+            </div>
+            <div className="flex flex-wrap gap-4 text-sm text-[#382e35]">
+              <div className="flex items-center gap-2 rounded-full bg-white px-4 py-2 ring-1 ring-[#e6e2e9]">
+                <span className="h-2 w-2 rounded-full" style={{ background: palette.lilac500 }} />
+                Typography: Work Sans + tight tracking
+              </div>
+              <div className="flex items-center gap-2 rounded-full bg-white px-4 py-2 ring-1 ring-[#e6e2e9]">
+                <span className="h-2 w-2 rounded-full" style={{ background: palette.dusty400 }} />
+                Card radius: 24-32px
+              </div>
+              <div className="flex items-center gap-2 rounded-full bg-white px-4 py-2 ring-1 ring-[#e6e2e9]">
+                <span className="h-2 w-2 rounded-full" style={{ background: palette.slate400 }} />
+                Gradient accents + soft noise
+              </div>
+            </div>
+          </div>
+          <div className="relative overflow-hidden rounded-[28px] bg-white p-6 shadow-[0_16px_60px_rgba(26,22,29,0.07)] ring-1 ring-[#e6e2e9]">
+            <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, rgba(129,110,145,0.12), rgba(88,167,160,0.12))` }} />
+            <div className="relative space-y-4 text-sm text-[#342c3a]">
+              <div className="flex items-center justify-between rounded-2xl bg-white/80 px-4 py-3 ring-1 ring-[#e6e2e9]">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-[#6f5d6a]">Step 1</p>
+                  <p className="font-semibold text-[#1a161d]">Lead captures</p>
+                </div>
+                <span className="rounded-full bg-[#f1f4f3] px-3 py-1 text-xs font-semibold text-[#445552]">+38% conversion</span>
+              </div>
+              <div className="flex items-center justify-between rounded-2xl bg-white/80 px-4 py-3 ring-1 ring-[#e6e2e9]">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-[#6f5d6a]">Step 2</p>
+                  <p className="font-semibold text-[#1a161d]">Automated onboarding</p>
+                </div>
+                <span className="rounded-full bg-[#eef6f6] px-3 py-1 text-xs font-semibold text-[#356460]">Playbooks</span>
+              </div>
+              <div className="flex items-center justify-between rounded-2xl bg-white/80 px-4 py-3 ring-1 ring-[#e6e2e9]">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-[#6f5d6a]">Step 3</p>
+                  <p className="font-semibold text-[#1a161d]">Transparent delivery</p>
+                </div>
+                <span className="rounded-full bg-[#f2f0f4] px-3 py-1 text-xs font-semibold text-[#4e4257]">Client portal</span>
+              </div>
+              <div className="rounded-2xl bg-[#1a161d] px-5 py-4 text-white shadow-lg">
+                <p className="text-sm font-semibold">CTA block</p>
+                <p className="text-xs text-white/80">Invite visitors to book a demo or start a workspace in seconds.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="brand" className="grid gap-8 rounded-[32px] bg-white/80 p-8 shadow-[0_14px_50px_rgba(26,22,29,0.06)] ring-1 ring-[#e6e2e9] lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="space-y-4">
+            <p className="text-xs uppercase tracking-[0.2em] text-[#6f5d6a]">Branding</p>
+            <h3 className="text-3xl font-semibold text-[#1a161d]">Color system ready to hand off</h3>
+            <p className="text-[#534650]">
+              The palette blends lilac ash, dusty lavender, and granite neutrals with a calming slate accent. Use them across
+              buttons, backgrounds, and cards for a cohesive identity.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {[palette.lilac500, palette.dusty400, palette.granite400, palette.slate400].map((color) => (
+                <div key={color} className="flex items-center justify-between rounded-2xl border border-[#e6e2e9] bg-white p-4">
+                  <div className="flex items-center gap-3">
+                    <span className="h-12 w-12 rounded-xl" style={{ background: color }} />
+                    <div className="text-sm font-semibold text-[#342c3a]">{color.toUpperCase()}</div>
+                  </div>
+                  <span className="rounded-full bg-[#f3f1f3] px-3 py-1 text-xs font-semibold text-[#4e4257]">Primary tone</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-[28px] bg-[#f2f0f4]/70 p-6 ring-1 ring-[#e6e2e9]">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-2xl bg-white p-4 text-sm text-[#342c3a] shadow-sm ring-1 ring-[#e6e2e9]">
+                <p className="text-xs uppercase tracking-[0.2em] text-[#6f5d6a]">Typography</p>
+                <p className="mt-2 font-semibold">Geist Sans</p>
+                <p className="text-[#534650]">Headline weight 600, body 400-500.</p>
+              </div>
+              <div className="rounded-2xl bg-white p-4 text-sm text-[#342c3a] shadow-sm ring-1 ring-[#e6e2e9]">
+                <p className="text-xs uppercase tracking-[0.2em] text-[#6f5d6a]">Components</p>
+                <p className="mt-2 font-semibold">Rounded corners</p>
+                <p className="text-[#534650]">Use 24-32px radius and soft inner shadows.</p>
+              </div>
+              <div className="rounded-2xl bg-white p-4 text-sm text-[#342c3a] shadow-sm ring-1 ring-[#e6e2e9]">
+                <p className="text-xs uppercase tracking-[0.2em] text-[#6f5d6a]">Spacing</p>
+                <p className="mt-2 font-semibold">8px grid</p>
+                <p className="text-[#534650]">Comfortable breathing room to feel premium.</p>
+              </div>
+              <div className="rounded-2xl bg-white p-4 text-sm text-[#342c3a] shadow-sm ring-1 ring-[#e6e2e9]">
+                <p className="text-xs uppercase tracking-[0.2em] text-[#6f5d6a]">Imagery</p>
+                <p className="mt-2 font-semibold">Hands-on craft</p>
+                <p className="text-[#534650]">Pair product shots with human, tactile details.</p>
               </div>
             </div>
           </div>
         </section>
       </main>
+
+      <footer className="border-t border-[#e6e2e9] bg-white/80">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-6 text-sm text-[#534650] md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-xl" style={{ background: palette.lilac500 }} />
+            <p className="font-semibold text-[#1a161d]">Omnick</p>
+          </div>
+          <p>Built for teams who care about the craft of delivery.</p>
+          <div className="flex gap-4 font-semibold text-[#4e4257]">
+            <a href="#">Privacy</a>
+            <a href="#">Terms</a>
+            <a href="#">Support</a>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

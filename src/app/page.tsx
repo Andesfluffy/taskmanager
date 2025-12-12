@@ -121,18 +121,18 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_18%_18%,#d7f5ed,transparent_32%),radial-gradient(circle_at_82%_8%,#e4fbf6,transparent_28%),radial-gradient(circle_at_50%_90%,#ccf0e7,transparent_32%)] text-[#0f2b2a]">
-      <div className="mx-auto flex max-w-6xl flex-col gap-12 px-6 py-10 lg:py-14">
+      <div className="mx-auto flex max-w-6xl flex-col gap-12 px-4 py-10 sm:px-6 lg:py-14">
         <header className="flex flex-col gap-6 rounded-3xl bg-white/80 p-6 shadow-[0_20px_70px_rgba(10,41,38,0.08)] ring-1 ring-[#dbe8e6] backdrop-blur md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-[#66e0cc] via-[#3cd3ba] to-[#1da68a] text-white shadow-lg">
               TM
             </div>
-            <div>
+            <div className="text-left">
               <p className="text-xs uppercase tracking-[0.24em] text-[#2f5653]">TaskManager</p>
               <p className="text-lg font-semibold text-[#0f2b2a]">Professional tasks in mint & white</p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-3 text-sm font-semibold text-[#2f5653]">
+          <div className="flex flex-wrap items-center gap-3 text-sm font-semibold text-[#2f5653] md:justify-end">
             <span className="rounded-full bg-[#ecf7f4] px-3 py-1">Guided workflows</span>
             <span className="rounded-full bg-[#ecf7f4] px-3 py-1">Secure access</span>
             <span className="rounded-full bg-[#ecf7f4] px-3 py-1">Always on</span>
@@ -142,21 +142,21 @@ export default function Home() {
           </div>
         </header>
 
-        <main className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-start">
-          <section className="space-y-8">
+        <main className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-start">
+          <section className="space-y-8 text-center sm:text-left">
             <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-[#18413e] shadow-sm ring-1 ring-[#dce9e7]">
               Focused flow
               <span className="h-2 w-2 rounded-full" style={{ background: palette.mint }} />
             </div>
             <div className="space-y-4">
-              <h1 className="text-4xl font-semibold leading-tight text-[#0f2b2a] md:text-5xl">
+              <h1 className="text-4xl font-semibold leading-tight text-[#0f2b2a] sm:text-5xl">
                 One click to your task manager.
               </h1>
-              <p className="max-w-2xl text-lg text-[#2f5653]">
+              <p className="mx-auto max-w-2xl text-lg text-[#2f5653] sm:mx-0">
                 Sign in, land on the workspace, and get to work. No clutter—just the tasks that move the day forward.
               </p>
             </div>
-            <div className="flex flex-wrap gap-4">
+            <div className="flex flex-wrap justify-center gap-4 sm:justify-start">
               <button
                 className="rounded-full px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-70"
                 style={{ background: `linear-gradient(135deg, ${palette.mint}, #1aa38d)` }}
@@ -174,7 +174,7 @@ export default function Home() {
               </button>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {promises.map((promise) => (
                 <div key={promise} className="rounded-2xl bg-white/90 p-4 text-sm font-semibold text-[#0f2b2a] shadow-sm ring-1 ring-[#dbe8e6]">
                   {promise}

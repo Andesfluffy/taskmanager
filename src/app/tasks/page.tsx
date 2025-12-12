@@ -268,20 +268,24 @@ export default function TasksPage() {
 
     const trimmedTitle = newTask.title.trim();
     const trimmedDescription = newTask.description.trim();
-    const { status, completed } = syncStatusAndCompletion(newTask.status, newTask.completed || newTask.status === "done");
+    const { status: creationStatus } = syncStatusAndCompletion(
+      newTask.status,
+      newTask.completed || newTask.status === "done",
+    );
+    const adjustedDescription = trimmedDescription || "Added to your queue.";
 
     try {
       const data = await requestJson<{ task: Task }>("/api/tasks", {
         method: "POST",
         body: JSON.stringify({
-          title: newTask.title.trim(),
+          title: trimmedTitle,
           status: creationStatus,
           priority: newTask.priority,
         }),
       });
 
       setTasks((prev) => [data.task, ...prev]);
-      setNewTask({ title: "", status: "todo", priority: "Medium" });
+      setNewTask({ title: "", description: "", status: "todo", completed: false, priority: "Medium" });
       setNewTaskError(null);
       showToast({ tone: "success", title: "Task added", description: adjustedDescription });
     } catch (error) {
@@ -576,14 +580,14 @@ export default function TasksPage() {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_18%_18%,#d7f5ed,transparent_32%),radial-gradient(circle_at_82%_8%,#e4fbf6,transparent_28%),radial-gradient(circle_at_50%_90%,#ccf0e7,transparent_32%)] text-[#0f2b2a]">
-      <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10 lg:py-14">
-        <header className="flex flex-col gap-4 rounded-3xl bg-white/85 p-6 shadow-[0_20px_70px_rgba(10,41,38,0.08)] ring-1 ring-[#dbe8e6] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-          <div>
+      <div className="mx-auto flex max-w-6xl flex-col gap-8 px-4 py-10 sm:px-6 lg:py-14">
+        <header className="flex flex-col gap-4 rounded-3xl bg-white/85 p-6 text-center shadow-[0_20px_70px_rgba(10,41,38,0.08)] ring-1 ring-[#dbe8e6] backdrop-blur sm:flex-row sm:items-center sm:justify-between sm:text-left">
+          <div className="space-y-1">
             <p className="text-xs uppercase tracking-[0.24em] text-[#2f5653]">TaskManager</p>
             <h1 className="text-3xl font-semibold text-[#0f2b2a]">Workspace</h1>
             <p className="text-sm text-[#2f5653]">Stay signed in to keep momentum. Every task stays private to your session.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-3 text-sm font-semibold text-[#2f5653]">
+          <div className="flex flex-wrap items-center justify-center gap-3 text-sm font-semibold text-[#2f5653] sm:justify-end">
             {readyUser && <span className="rounded-full bg-[#ecf7f4] px-3 py-1">{readyUser.email ?? "Signed in"}</span>}
             <button
               className="rounded-full bg-[#2ec4b6] px-5 py-2 text-white shadow-md transition hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-70"
@@ -597,7 +601,7 @@ export default function TasksPage() {
 
         <section className="rounded-3xl bg-white/90 p-6 shadow-[0_22px_70px_rgba(10,41,38,0.12)] ring-1 ring-[#dbe8e6]">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-            <div className="space-y-2">
+            <div className="space-y-2 text-center sm:text-left">
               <p className="text-xs uppercase tracking-[0.22em] text-[#2f5653]">Today</p>
               <h2 className="text-2xl font-semibold text-[#0f2b2a]">Make a move and ship</h2>
               <p className="text-sm text-[#2f5653]">Advance tasks column by column. Everything here is your focused queue.</p>
@@ -681,7 +685,7 @@ export default function TasksPage() {
                 />
                 Mark as completed
               </label>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="submit"
                   className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#2ec4b6] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-70"
@@ -709,7 +713,8 @@ export default function TasksPage() {
             </form>
           </div>
 
-          <div className="mt-6 flex items-center justify-end gap-2">
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#2f5653]">Layout</p>
             <div className="rounded-full bg-[#f6fbf9] p-1 ring-1 ring-[#dbe8e6]">
               <button
                 className={`rounded-full px-3 py-1 text-xs font-semibold transition ${viewMode === "grid" ? "bg-white text-[#0f2b2a] shadow-sm" : "text-[#2f5653]"}`}
@@ -731,7 +736,7 @@ export default function TasksPage() {
               Loading tasks…
             </div>
           ) : viewMode === "grid" ? (
-            <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 md:grid-cols-3">
               {(
                 [
                   { key: "todo", title: "To do" },
@@ -789,7 +794,7 @@ export default function TasksPage() {
         )}
 
         {toasts.length > 0 && (
-          <div className="fixed bottom-6 right-6 flex max-w-xs flex-col gap-3 sm:max-w-sm">
+          <div className="fixed bottom-4 left-4 right-4 flex flex-col gap-3 sm:bottom-6 sm:left-auto sm:right-6 sm:max-w-sm">
             {toasts.map((toast) => (
               <div
                 key={toast.id}

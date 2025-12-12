@@ -245,7 +245,6 @@ export default function TasksPage() {
       showToast({ tone: "error", title: "Unable to complete task", description: message });
     }
   };
-
   const handleEditStart = (task: Task) => {
     setEditingTaskId(task.id);
     setEditDraft({ title: task.title, status: task.status, priority: task.priority });

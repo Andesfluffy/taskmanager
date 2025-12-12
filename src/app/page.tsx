@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 
 import { type FirebaseConfig, type FirebaseUser, getFirebase } from "@/lib/firebase-client";
@@ -8,18 +9,6 @@ type AuthState =
   | { phase: "loading" }
   | { phase: "ready"; user?: FirebaseUser }
   | { phase: "error"; message: string };
-
-'use client';
-
-import { useMemo, useState, useEffect } from 'react';
-import { getFirebase, type FirebaseConfig } from '@/lib/firebase-client';
-
-const firebaseConfig: FirebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || '',
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || '',
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || '',
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '',
-};
 
 const palette = {
   lilac500: "#816e91",
@@ -126,27 +115,37 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-5xl gap-10 px-6 py-12 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+      <main className="mx-auto grid max-w-6xl gap-10 px-6 py-12 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
         <section className="space-y-6">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#4e4257] shadow-sm ring-1 ring-[#e6e2e9]">
-            Built for busy teams
+          <div className="inline-flex items-center gap-2 rounded-full bg-white/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] text-[#4e4257] shadow-sm ring-1 ring-[#e6e2e9]">
+            Task flow in minutes
             <span className="h-2 w-2 rounded-full" style={{ background: palette.slate500 }} />
           </div>
           <div className="space-y-4">
-            <h1 className="text-4xl font-semibold leading-tight text-[#1c1622] md:text-5xl">A focused landing for getting into TaskManager fast.</h1>
-            <p className="max-w-2xl text-lg text-[#4e4257]">
-              TaskManager keeps every assignment, due date, and update in one place. Sign in to unlock your board, receive smart reminders, and keep the whole crew aligned.
+            <h1 className="text-4xl font-semibold leading-tight text-[#1c1622] md:text-5xl">Run your workday with calm clarity.</h1>
+            <p className="max-w-2xl text-lg text-[#3a3141]">
+              TaskManager keeps every to-do, owner, and deadline in one view. Sign in to focus on what moves the project forward today.
             </p>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {["Stay on top of deadlines", "Share updates instantly", "Keep clients in the loop", "Sign in securely with Google"].map((item) => (
-              <div key={item} className="flex items-start gap-3 rounded-2xl bg-white/80 p-4 shadow-sm ring-1 ring-[#e6e2e9]">
-                <span className="mt-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: palette.lilac500 }}>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {["Prioritize fast", "Share updates", "Track progress"].map((item) => (
+              <div key={item} className="flex items-center gap-3 rounded-2xl bg-white/85 px-4 py-3 shadow-sm ring-1 ring-[#e6e2e9]">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold text-white" style={{ background: palette.lilac500 }}>
                   ✓
                 </span>
-                <p className="text-sm text-[#2f2735]">{item}</p>
+                <p className="text-sm font-semibold text-[#241c28]">{item}</p>
               </div>
             ))}
+          </div>
+          <div className="hidden rounded-3xl bg-white/90 shadow-[0_18px_60px_rgba(26,22,29,0.08)] ring-1 ring-[#e6e2e9] lg:block">
+            <Image
+              alt="Sticky notes showing to-do, doing, and done workflow"
+              className="h-full w-full rounded-3xl object-cover"
+              height={420}
+              src="https://images.unsplash.com/photo-1611224923853-80b023f02d71?q=80&w=739&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
+              width={800}
+              priority
+            />
           </div>
         </section>
 
@@ -155,7 +154,7 @@ export default function Home() {
             <p className="text-xs uppercase tracking-[0.25em] text-[#5a4d65]">Access</p>
             <h2 className="text-2xl font-semibold text-[#1c1622]">Sign in to your workspace</h2>
             <p className="text-sm text-[#4e4257]">
-              Use your Google account to jump back into TaskManager. Your tasks, comments, and notifications are protected with Firebase authentication.
+              Use Google to jump into TaskManager. Your boards stay private and ready the moment you arrive.
             </p>
           </div>
 
@@ -164,7 +163,7 @@ export default function Home() {
             {hasError && <p className="mt-1 text-[#9b1c1c]">{authState.message}</p>}
             {!hasError && showLoading && <p className="mt-1 text-[#4e4257]">Checking your session…</p>}
             {!hasError && !showLoading && (
-              <p className="mt-1 text-[#4e4257]">{user ? "You are signed in and ready to manage tasks." : "You are signed out. Sign in to see your boards."}</p>
+              <p className="mt-1 text-[#4e4257]">{user ? "You're signed in—open your tasks and keep moving." : "You're signed out. Sign in to see your boards."}</p>
             )}
             {actionMessage && <p className="mt-2 text-[#3f3a45]">{actionMessage}</p>}
           </div>

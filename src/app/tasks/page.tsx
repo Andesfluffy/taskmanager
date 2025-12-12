@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { getFirebaseEnv } from "@/lib/env";
@@ -35,47 +35,6 @@ try {
 } catch (error) {
   firebaseEnvError = error instanceof Error ? error.message : "Unable to read Firebase env vars.";
   firebaseConfig = undefined;
-}
-
-const defaultTasks: Task[] = [
-  {
-    id: "1",
-    title: "Draft sprint goals",
-    description: "Outline the goals and success metrics for the next sprint.",
-    status: "todo",
-    completed: false,
-    priority: "High",
-  },
-  {
-    id: "2",
-    title: "Confirm stakeholder list",
-    description: "Verify everyone who needs the weekly update email.",
-    status: "todo",
-    completed: false,
-    priority: "Medium",
-  },
-  {
-    id: "3",
-    title: "Review blockers",
-    description: "List anything slowing delivery for the leadership review.",
-    status: "doing",
-    completed: false,
-    priority: "High",
-  },
-  {
-    id: "4",
-    title: "Share daily recap",
-    description: "Publish the day-end summary with links to shipped items.",
-    status: "done",
-    completed: true,
-    priority: "Low",
-  },
-];
-
-function syncStatusAndCompletion(status: Task["status"], completed: boolean) {
-  if (completed) return { status: "done" as const, completed: true };
-  if (status === "done") return { status: "todo" as const, completed: false };
-  return { status, completed: false };
 }
 
 export default function TasksPage() {
@@ -113,10 +72,67 @@ export default function TasksPage() {
   const [editDraft, setEditDraft] =
     useState<Pick<Task, "title" | "description" | "status" | "priority" | "completed"> | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
-  const [tasks, setTasks] = useState<Task[]>(defaultTasks);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [isLoadingTasks, setIsLoadingTasks] = useState<boolean>(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [pendingDelete, setPendingDelete] = useState<Task | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const hasLoadedTasks = useRef(false);
+
+  const showToast = useCallback((toast: Omit<Toast, "id">) => {
+    const id = crypto.randomUUID();
+    setToasts((prev) => [...prev, { ...toast, id }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((item) => item.id !== id));
+    }, 4200);
+  }, []);
+
+  const validateTaskFields = ({ title }: { title: string }) => {
+    const trimmed = title.trim();
+    if (!trimmed) return "Title is required.";
+    if (trimmed.length < 3) return "Use at least 3 characters for the title.";
+    return null;
+  };
+
+  const requestJson = async <T,>(input: RequestInfo | URL, init?: RequestInit) => {
+    const response = await fetch(input, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+    });
+
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = {};
+    }
+
+    if (!response.ok) {
+      const errorMessage =
+        typeof (payload as { error?: unknown }).error === "string"
+          ? (payload as { error?: unknown }).error
+          : "Request failed.";
+      throw new Error(errorMessage);
+    }
+
+    return payload as T;
+  };
+
+  const loadTasks = useCallback(async () => {
+    setIsLoadingTasks(true);
+    try {
+      const data = await requestJson<{ tasks: Task[] }>("/api/tasks");
+      setTasks(data.tasks ?? []);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to load tasks.";
+      showToast({ tone: "error", title: "Unable to load tasks", description: message });
+    } finally {
+      setIsLoadingTasks(false);
+    }
+  }, [showToast]);
 
   useEffect(() => {
     if (missingConfig.length > 0 || !firebaseConfig) return undefined;
@@ -147,6 +163,12 @@ export default function TasksPage() {
     }
   }, [authState, router]);
 
+  useEffect(() => {
+    if (authState.phase !== "ready" || !authState.user || hasLoadedTasks.current) return;
+    hasLoadedTasks.current = true;
+    void loadTasks();
+  }, [authState, loadTasks]);
+
   const handleSignOut = async () => {
     setActionMessage("Signing you out…");
     try {
@@ -160,24 +182,34 @@ export default function TasksPage() {
     }
   };
 
-  const handleAdvance = (id: string) => {
-    setTasks((prev) =>
-      prev.map((task) => {
-        if (task.id !== id) return task;
-
-        const nextStatus = task.status === "todo" ? "doing" : "done";
-        const { status, completed } = syncStatusAndCompletion(nextStatus, nextStatus === "done");
-        return { ...task, status, completed };
-      }),
-    );
-  };
-
-  const showToast = (toast: Omit<Toast, "id">) => {
+  const showToast = useCallback((toast: Omit<Toast, "id">) => {
     const id = crypto.randomUUID();
     setToasts((prev) => [...prev, { ...toast, id }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((item) => item.id !== id));
     }, 4200);
+  }, []);
+
+  const interactionBlockedReason =
+    authState.phase === "error"
+      ? authState.message
+      : authState.phase === "loading"
+        ? "Authenticating with Firebase. Actions are paused until we confirm your session."
+        : !authState.user
+          ? "Sign in to manage tasks in this workspace."
+          : null;
+
+  const enforceAuthenticatedActions = () => {
+    if (!interactionBlockedReason) return true;
+
+    const description =
+      authState.phase === "error"
+        ? "Resolve the Firebase configuration issue to continue."
+        : "Please complete sign-in before updating tasks.";
+
+    showToast({ tone: "error", title: "Action blocked", description });
+    setActionMessage(interactionBlockedReason);
+    return false;
   };
 
   const validateTaskFields = ({ title, description }: { title: string; description?: string }) => {
@@ -191,9 +223,51 @@ export default function TasksPage() {
     return null;
   };
 
-  const handleAddTask = (event: FormEvent<HTMLFormElement>) => {
+  const requestJson = async <T,>(input: RequestInfo | URL, init?: RequestInit) => {
+    const response = await fetch(input, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+    });
+
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = {};
+    }
+
+    if (!response.ok) {
+      const errorMessage =
+        typeof (payload as { error?: unknown }).error === "string"
+          ? (payload as { error?: unknown }).error
+          : "Request failed.";
+      throw new Error(errorMessage);
+    }
+
+    return payload as T;
+  };
+
+  const loadTasks = useCallback(async () => {
+    setIsLoadingTasks(true);
+    try {
+      const data = await requestJson<{ tasks: Task[] }>("/api/tasks");
+      setTasks(data.tasks ?? []);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to load tasks.";
+      showToast({ tone: "error", title: "Unable to load tasks", description: message });
+    } finally {
+      setIsLoadingTasks(false);
+    }
+  }, [showToast]);
+
+  const handleAddTask = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const validationError = validateTaskFields({ title: newTask.title, description: newTask.description });
+    if (!enforceAuthenticatedActions()) return;
+
+    const validationError = validateTaskFields({ title: newTask.title });
     if (validationError) {
       setNewTaskError(validationError);
       showToast({ tone: "error", title: "Please check the form", description: validationError });
@@ -204,41 +278,62 @@ export default function TasksPage() {
     const trimmedDescription = newTask.description.trim();
     const { status, completed } = syncStatusAndCompletion(newTask.status, newTask.completed || newTask.status === "done");
 
-    setTasks((prev) => [
-      {
-        id: crypto.randomUUID(),
-        title: trimmedTitle,
-        description: trimmedDescription,
-        status,
-        completed,
-        priority: newTask.priority,
-      },
-      ...prev,
-    ]);
-    setNewTask({ title: "", description: "", status: "todo", completed: false, priority: "Medium" });
-    setNewTaskError(null);
-    showToast({
-      tone: "success",
-      title: "Task added",
-      description: completed ? "Saved as completed." : "Added to your workspace.",
-    });
-  };
+    try {
+      const data = await requestJson<{ task: Task }>("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify({
+          title: newTask.title.trim(),
+          status: creationStatus,
+          priority: newTask.priority,
+        }),
+      });
 
-  const handleMarkComplete = (id: string) => {
-    setTasks((prev) =>
-      prev.map((task) =>
-        task.id === id ? { ...task, status: "done", completed: true } : task,
-      ),
-    );
-    if (editingTaskId === id) {
-      setEditingTaskId(null);
-      setEditDraft(null);
-      setEditError(null);
+      setTasks((prev) => [data.task, ...prev]);
+      setNewTask({ title: "", status: "todo", priority: "Medium" });
+      setNewTaskError(null);
+      showToast({ tone: "success", title: "Task added", description: adjustedDescription });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to create the task.";
+      setNewTaskError(message);
+      showToast({ tone: "error", title: "Unable to create task", description: message });
     }
-    showToast({ tone: "success", title: "Task completed", description: "Marked as done." });
   };
 
+  const handleAdvance = async (id: string) => {
+    const task = tasks.find((item) => item.id === id);
+    if (!task) return;
+
+    const nextStatus = task.status === "todo" ? "doing" : task.status === "doing" ? "done" : null;
+    if (!nextStatus) return;
+
+    try {
+      await requestJson("/api/tasks", { method: "PATCH", body: JSON.stringify({ id, status: nextStatus }) });
+      setTasks((prev) => prev.map((item) => (item.id === id ? { ...item, status: nextStatus } : item)));
+      showToast({ tone: "success", title: "Task updated", description: "Status advanced." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to advance the task.";
+      showToast({ tone: "error", title: "Unable to advance task", description: message });
+    }
+  };
+
+  const handleMarkComplete = async (id: string) => {
+    try {
+      await requestJson("/api/tasks", { method: "PATCH", body: JSON.stringify({ id, status: "done" }) });
+      setTasks((prev) => prev.map((task) => (task.id === id ? { ...task, status: "done" } : task)));
+      if (editingTaskId === id) {
+        setEditingTaskId(null);
+        setEditDraft(null);
+        setEditError(null);
+      }
+      showToast({ tone: "success", title: "Task completed", description: "Marked as done." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to complete the task.";
+      showToast({ tone: "error", title: "Unable to complete task", description: message });
+    }
+  };
   const handleEditStart = (task: Task) => {
+    if (!enforceAuthenticatedActions()) return;
+
     setEditingTaskId(task.id);
     setEditDraft({
       title: task.title,
@@ -250,8 +345,10 @@ export default function TasksPage() {
     setEditError(null);
   };
 
-  const handleUpdateTask = (event: FormEvent<HTMLFormElement>, id: string) => {
+  const handleUpdateTask = async (event: FormEvent<HTMLFormElement>, id: string) => {
     event.preventDefault();
+    if (!enforceAuthenticatedActions()) return;
+
     if (!editDraft) return;
     const validationError = validateTaskFields({ title: editDraft.title, description: editDraft.description });
     if (validationError) {
@@ -260,46 +357,56 @@ export default function TasksPage() {
       return;
     }
 
-    const trimmedTitle = editDraft.title.trim();
-    const trimmedDescription = editDraft.description?.trim() ?? "";
-    const { status, completed } = syncStatusAndCompletion(
-      editDraft.status,
-      editDraft.completed ?? editDraft.status === "done",
-    );
+    try {
+      await requestJson("/api/tasks", {
+        method: "PATCH",
+        body: JSON.stringify({ id, ...editDraft, title: editDraft.title.trim() }),
+      });
 
-    setTasks((prev) =>
-      prev.map((task) =>
-        task.id === id
-          ? { ...task, ...editDraft, title: trimmedTitle, description: trimmedDescription, status, completed }
-          : task,
-      ),
-    );
-    setEditingTaskId(null);
-    setEditDraft(null);
-    setEditError(null);
-    showToast({ tone: "success", title: "Task updated", description: "Changes saved." });
-  };
-
-  const handleDeleteTask = (id: string) => {
-    setTasks((prev) => prev.filter((task) => task.id !== id));
-    if (editingTaskId === id) {
+      setTasks((prev) =>
+        prev.map((task) => (task.id === id ? { ...task, ...editDraft, title: editDraft.title.trim() } : task)),
+      );
       setEditingTaskId(null);
       setEditDraft(null);
       setEditError(null);
+      showToast({ tone: "success", title: "Task updated", description: "Changes saved." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to update the task.";
+      setEditError(message);
+      showToast({ tone: "error", title: "Unable to update task", description: message });
     }
-    showToast({ tone: "info", title: "Task removed", description: "The task has been deleted." });
+  };
+
+  const handleDeleteTask = async (id: string) => {
+    try {
+      await requestJson("/api/tasks", { method: "DELETE", body: JSON.stringify({ id }) });
+      setTasks((prev) => prev.filter((task) => task.id !== id));
+      if (editingTaskId === id) {
+        setEditingTaskId(null);
+        setEditDraft(null);
+        setEditError(null);
+      }
+      showToast({ tone: "info", title: "Task removed", description: "The task has been deleted." });
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to delete the task.";
+      showToast({ tone: "error", title: "Unable to delete task", description: message });
+      return false;
+    }
   };
 
   const requestDeleteTask = (task: Task) => {
+    if (!enforceAuthenticatedActions()) return;
+
     setPendingDelete(task);
   };
 
   const cancelDeleteTask = () => setPendingDelete(null);
 
-  const confirmDeleteTask = () => {
+  const confirmDeleteTask = async () => {
     if (!pendingDelete) return;
-    handleDeleteTask(pendingDelete.id);
-    setPendingDelete(null);
+    const success = await handleDeleteTask(pendingDelete.id);
+    if (success) setPendingDelete(null);
   };
 
   const readyUser = authState.phase === "ready" ? authState.user : undefined;
@@ -342,6 +449,7 @@ export default function TasksPage() {
               className="w-full rounded-lg border border-[#d6ece8] bg-white px-3 py-2 text-sm text-[#0f2b2a] shadow-sm focus:border-[#2ec4b6] focus:outline-none"
               value={editDraft.title}
               onChange={(event) => setEditDraft((prev) => (prev ? { ...prev, title: event.target.value } : prev))}
+              disabled={!!interactionBlockedReason}
             />
           </div>
           <div className="flex flex-col gap-1">
@@ -369,6 +477,7 @@ export default function TasksPage() {
                     return { ...prev, status, completed };
                   })
                 }
+                disabled={!!interactionBlockedReason}
               >
                 <option value="todo">To do</option>
                 <option value="doing">In progress</option>
@@ -383,6 +492,7 @@ export default function TasksPage() {
                 onChange={(event) =>
                   setEditDraft((prev) => prev ? { ...prev, priority: event.target.value as Task["priority"] } : prev)
                 }
+                disabled={!!interactionBlockedReason}
               >
                 <option value="High">High</option>
                 <option value="Medium">Medium</option>
@@ -414,6 +524,7 @@ export default function TasksPage() {
             <button
               type="submit"
               className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#2ec4b6] px-3 py-2 text-xs font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:shadow-lg"
+              disabled={!!interactionBlockedReason}
             >
               Save changes
             </button>
@@ -425,6 +536,7 @@ export default function TasksPage() {
                 setEditDraft(null);
                 setEditError(null);
               }}
+              disabled={!!interactionBlockedReason}
             >
               Cancel
             </button>
@@ -436,6 +548,7 @@ export default function TasksPage() {
             <button
               className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-[#d6ece8] px-3 py-2 text-xs font-semibold text-[#0f2b2a] transition hover:-translate-y-0.5 hover:shadow-sm"
               onClick={() => handleAdvance(task.id)}
+              disabled={!!interactionBlockedReason}
             >
               Move to {task.status === "todo" ? "In progress" : "Done"}
             </button>
@@ -444,6 +557,7 @@ export default function TasksPage() {
             <button
               className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#2ec4b6]/10 px-3 py-2 text-xs font-semibold text-[#0f2b2a] transition hover:-translate-y-0.5 hover:shadow-sm ring-1 ring-[#b9e8e1]"
               onClick={() => handleMarkComplete(task.id)}
+              disabled={!!interactionBlockedReason}
             >
               Mark as completed
             </button>
@@ -451,12 +565,14 @@ export default function TasksPage() {
           <button
             className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-[#d6ece8] px-3 py-2 text-xs font-semibold text-[#0f2b2a] transition hover:-translate-y-0.5 hover:shadow-sm"
             onClick={() => handleEditStart(task)}
+            disabled={!!interactionBlockedReason}
           >
             Edit
           </button>
           <button
             className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#f8e1de] px-3 py-2 text-xs font-semibold text-[#8b1a1a] transition hover:-translate-y-0.5 hover:shadow-sm"
             onClick={() => requestDeleteTask(task)}
+            disabled={!!interactionBlockedReason}
           >
             Delete
           </button>
@@ -505,6 +621,7 @@ export default function TasksPage() {
                   placeholder="Add a concise task title"
                   value={newTask.title}
                   onChange={(event) => setNewTask((prev) => ({ ...prev, title: event.target.value }))}
+                  disabled={!!interactionBlockedReason}
                 />
                 {newTaskError && <p className="text-xs text-[#c0392b]">{newTaskError}</p>}
               </div>
@@ -531,6 +648,7 @@ export default function TasksPage() {
                         return { ...prev, status, completed };
                       })
                     }
+                    disabled={!!interactionBlockedReason}
                   >
                     <option value="todo">To do</option>
                     <option value="doing">In progress</option>
@@ -545,6 +663,7 @@ export default function TasksPage() {
                     onChange={(event) =>
                       setNewTask((prev) => ({ ...prev, priority: event.target.value as Task["priority"] }))
                     }
+                    disabled={!!interactionBlockedReason}
                   >
                     <option value="High">High</option>
                     <option value="Medium">Medium</option>
@@ -574,7 +693,7 @@ export default function TasksPage() {
                 <button
                   type="submit"
                   className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#2ec4b6] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-70"
-                  disabled={!newTask.title.trim()}
+                  disabled={!newTask.title.trim() || !!interactionBlockedReason}
                 >
                   Add task
                 </button>
@@ -585,10 +704,16 @@ export default function TasksPage() {
                     setNewTask({ title: "", description: "", status: "todo", completed: false, priority: "Medium" });
                     setNewTaskError(null);
                   }}
+                  disabled={!!interactionBlockedReason}
                 >
                   Reset
                 </button>
               </div>
+              {interactionBlockedReason && (
+                <p className="text-xs text-[#2f5653]">
+                  {interactionBlockedReason}
+                </p>
+              )}
             </form>
           </div>
 
@@ -609,7 +734,11 @@ export default function TasksPage() {
             </div>
           </div>
 
-          {viewMode === "grid" ? (
+          {isLoadingTasks ? (
+            <div className="mt-4 rounded-2xl bg-[#f6fbf9] px-4 py-3 text-sm text-[#2f5653] ring-1 ring-[#dbe8e6]">
+              Loading tasks…
+            </div>
+          ) : viewMode === "grid" ? (
             <div className="mt-4 grid gap-4 md:grid-cols-3">
               {(
                 [

@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { getFirebaseEnv } from "@/lib/env";
@@ -35,13 +35,6 @@ try {
   firebaseConfig = undefined;
 }
 
-const defaultTasks: Task[] = [
-  { id: "1", title: "Draft sprint goals", status: "todo", priority: "High" },
-  { id: "2", title: "Confirm stakeholder list", status: "todo", priority: "Medium" },
-  { id: "3", title: "Review blockers", status: "doing", priority: "High" },
-  { id: "4", title: "Share daily recap", status: "done", priority: "Low" },
-];
-
 export default function TasksPage() {
   const router = useRouter();
   const missingConfig = useMemo(() => {
@@ -74,10 +67,12 @@ export default function TasksPage() {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<Pick<Task, "title" | "status" | "priority"> | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
-  const [tasks, setTasks] = useState<Task[]>(defaultTasks);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [isLoadingTasks, setIsLoadingTasks] = useState<boolean>(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [pendingDelete, setPendingDelete] = useState<Task | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const hasLoadedTasks = useRef(false);
 
   useEffect(() => {
     if (missingConfig.length > 0 || !firebaseConfig) return undefined;
@@ -108,6 +103,12 @@ export default function TasksPage() {
     }
   }, [authState, router]);
 
+  useEffect(() => {
+    if (authState.phase !== "ready" || !authState.user || hasLoadedTasks.current) return;
+    hasLoadedTasks.current = true;
+    void loadTasks();
+  }, [authState, loadTasks]);
+
   const handleSignOut = async () => {
     setActionMessage("Signing you out…");
     try {
@@ -121,25 +122,13 @@ export default function TasksPage() {
     }
   };
 
-  const handleAdvance = (id: string) => {
-    setTasks((prev) =>
-      prev.map((task) => {
-        if (task.id !== id) return task;
-
-        if (task.status === "todo") return { ...task, status: "doing" };
-        if (task.status === "doing") return { ...task, status: "done" };
-        return task;
-      }),
-    );
-  };
-
-  const showToast = (toast: Omit<Toast, "id">) => {
+  const showToast = useCallback((toast: Omit<Toast, "id">) => {
     const id = crypto.randomUUID();
     setToasts((prev) => [...prev, { ...toast, id }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((item) => item.id !== id));
     }, 4200);
-  };
+  }, []);
 
   const validateTaskFields = ({ title }: { title: string }) => {
     const trimmed = title.trim();
@@ -148,7 +137,47 @@ export default function TasksPage() {
     return null;
   };
 
-  const handleAddTask = (event: FormEvent<HTMLFormElement>) => {
+  const requestJson = async <T,>(input: RequestInfo | URL, init?: RequestInit) => {
+    const response = await fetch(input, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+    });
+
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = {};
+    }
+
+    if (!response.ok) {
+      const errorMessage =
+        typeof (payload as { error?: unknown }).error === "string"
+          ? (payload as { error?: unknown }).error
+          : "Request failed.";
+      throw new Error(errorMessage);
+    }
+
+    return payload as T;
+  };
+
+  const loadTasks = useCallback(async () => {
+    setIsLoadingTasks(true);
+    try {
+      const data = await requestJson<{ tasks: Task[] }>("/api/tasks");
+      setTasks(data.tasks ?? []);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to load tasks.";
+      showToast({ tone: "error", title: "Unable to load tasks", description: message });
+    } finally {
+      setIsLoadingTasks(false);
+    }
+  }, [showToast]);
+
+  const handleAddTask = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const validationError = validateTaskFields({ title: newTask.title });
     if (validationError) {
@@ -163,33 +192,58 @@ export default function TasksPage() {
         ? "New tasks start as pending. We saved this one to your to-do list."
         : "The new task was created.";
 
-    setTasks((prev) => [
-      { id: crypto.randomUUID(), title: newTask.title.trim(), status: creationStatus, priority: newTask.priority },
-      ...prev,
-    ]);
-    setNewTask({ title: "", status: "todo", priority: "Medium" });
-    setNewTaskError(null);
-    showToast({ tone: "success", title: "Task added", description: adjustedDescription });
+    try {
+      const data = await requestJson<{ task: Task }>("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify({
+          title: newTask.title.trim(),
+          status: creationStatus,
+          priority: newTask.priority,
+        }),
+      });
+
+      setTasks((prev) => [data.task, ...prev]);
+      setNewTask({ title: "", status: "todo", priority: "Medium" });
+      setNewTaskError(null);
+      showToast({ tone: "success", title: "Task added", description: adjustedDescription });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to create the task.";
+      setNewTaskError(message);
+      showToast({ tone: "error", title: "Unable to create task", description: message });
+    }
   };
 
-  const handleMarkComplete = (id: string) => {
-    setTasks((prev) => prev.map((task) => (task.id === id ? { ...task, status: "done" } : task)));
-    if (editingTaskId === id) {
-      setEditingTaskId(null);
-      setEditDraft(null);
-      setEditError(null);
+  const handleAdvance = async (id: string) => {
+    const task = tasks.find((item) => item.id === id);
+    if (!task) return;
+
+    const nextStatus = task.status === "todo" ? "doing" : task.status === "doing" ? "done" : null;
+    if (!nextStatus) return;
+
+    try {
+      await requestJson("/api/tasks", { method: "PATCH", body: JSON.stringify({ id, status: nextStatus }) });
+      setTasks((prev) => prev.map((item) => (item.id === id ? { ...item, status: nextStatus } : item)));
+      showToast({ tone: "success", title: "Task updated", description: "Status advanced." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to advance the task.";
+      showToast({ tone: "error", title: "Unable to advance task", description: message });
     }
-    showToast({ tone: "success", title: "Task completed", description: "Marked as done." });
   };
 
-  const handleMarkComplete = (id: string) => {
-    setTasks((prev) => prev.map((task) => (task.id === id ? { ...task, status: "done" } : task)));
-    if (editingTaskId === id) {
-      setEditingTaskId(null);
-      setEditDraft(null);
-      setEditError(null);
+  const handleMarkComplete = async (id: string) => {
+    try {
+      await requestJson("/api/tasks", { method: "PATCH", body: JSON.stringify({ id, status: "done" }) });
+      setTasks((prev) => prev.map((task) => (task.id === id ? { ...task, status: "done" } : task)));
+      if (editingTaskId === id) {
+        setEditingTaskId(null);
+        setEditDraft(null);
+        setEditError(null);
+      }
+      showToast({ tone: "success", title: "Task completed", description: "Marked as done." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to complete the task.";
+      showToast({ tone: "error", title: "Unable to complete task", description: message });
     }
-    showToast({ tone: "success", title: "Task completed", description: "Marked as done." });
   };
 
   const handleEditStart = (task: Task) => {
@@ -198,7 +252,7 @@ export default function TasksPage() {
     setEditError(null);
   };
 
-  const handleUpdateTask = (event: FormEvent<HTMLFormElement>, id: string) => {
+  const handleUpdateTask = async (event: FormEvent<HTMLFormElement>, id: string) => {
     event.preventDefault();
     if (!editDraft) return;
     const validationError = validateTaskFields({ title: editDraft.title });
@@ -208,23 +262,42 @@ export default function TasksPage() {
       return;
     }
 
-    setTasks((prev) =>
-      prev.map((task) => (task.id === id ? { ...task, ...editDraft, title: editDraft.title.trim() } : task)),
-    );
-    setEditingTaskId(null);
-    setEditDraft(null);
-    setEditError(null);
-    showToast({ tone: "success", title: "Task updated", description: "Changes saved." });
-  };
+    try {
+      await requestJson("/api/tasks", {
+        method: "PATCH",
+        body: JSON.stringify({ id, ...editDraft, title: editDraft.title.trim() }),
+      });
 
-  const handleDeleteTask = (id: string) => {
-    setTasks((prev) => prev.filter((task) => task.id !== id));
-    if (editingTaskId === id) {
+      setTasks((prev) =>
+        prev.map((task) => (task.id === id ? { ...task, ...editDraft, title: editDraft.title.trim() } : task)),
+      );
       setEditingTaskId(null);
       setEditDraft(null);
       setEditError(null);
+      showToast({ tone: "success", title: "Task updated", description: "Changes saved." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to update the task.";
+      setEditError(message);
+      showToast({ tone: "error", title: "Unable to update task", description: message });
     }
-    showToast({ tone: "info", title: "Task removed", description: "The task has been deleted." });
+  };
+
+  const handleDeleteTask = async (id: string) => {
+    try {
+      await requestJson("/api/tasks", { method: "DELETE", body: JSON.stringify({ id }) });
+      setTasks((prev) => prev.filter((task) => task.id !== id));
+      if (editingTaskId === id) {
+        setEditingTaskId(null);
+        setEditDraft(null);
+        setEditError(null);
+      }
+      showToast({ tone: "info", title: "Task removed", description: "The task has been deleted." });
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to delete the task.";
+      showToast({ tone: "error", title: "Unable to delete task", description: message });
+      return false;
+    }
   };
 
   const requestDeleteTask = (task: Task) => {
@@ -233,10 +306,10 @@ export default function TasksPage() {
 
   const cancelDeleteTask = () => setPendingDelete(null);
 
-  const confirmDeleteTask = () => {
+  const confirmDeleteTask = async () => {
     if (!pendingDelete) return;
-    handleDeleteTask(pendingDelete.id);
-    setPendingDelete(null);
+    const success = await handleDeleteTask(pendingDelete.id);
+    if (success) setPendingDelete(null);
   };
 
   const readyUser = authState.phase === "ready" ? authState.user : undefined;
@@ -477,7 +550,11 @@ export default function TasksPage() {
             </div>
           </div>
 
-          {viewMode === "grid" ? (
+          {isLoadingTasks ? (
+            <div className="mt-4 rounded-2xl bg-[#f6fbf9] px-4 py-3 text-sm text-[#2f5653] ring-1 ring-[#dbe8e6]">
+              Loading tasks…
+            </div>
+          ) : viewMode === "grid" ? (
             <div className="mt-4 grid gap-4 md:grid-cols-3">
               {(
                 [

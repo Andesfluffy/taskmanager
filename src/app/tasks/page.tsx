@@ -157,13 +157,29 @@ export default function TasksPage() {
       return;
     }
 
+    const creationStatus = newTask.status === "done" ? "todo" : newTask.status;
+    const adjustedDescription =
+      newTask.status === "done"
+        ? "New tasks start as pending. We saved this one to your to-do list."
+        : "The new task was created.";
+
     setTasks((prev) => [
-      { id: crypto.randomUUID(), title: newTask.title.trim(), status: newTask.status, priority: newTask.priority },
+      { id: crypto.randomUUID(), title: newTask.title.trim(), status: creationStatus, priority: newTask.priority },
       ...prev,
     ]);
     setNewTask({ title: "", status: "todo", priority: "Medium" });
     setNewTaskError(null);
-    showToast({ tone: "success", title: "Task added", description: "The new task was created." });
+    showToast({ tone: "success", title: "Task added", description: adjustedDescription });
+  };
+
+  const handleMarkComplete = (id: string) => {
+    setTasks((prev) => prev.map((task) => (task.id === id ? { ...task, status: "done" } : task)));
+    if (editingTaskId === id) {
+      setEditingTaskId(null);
+      setEditDraft(null);
+      setEditError(null);
+    }
+    showToast({ tone: "success", title: "Task completed", description: "Marked as done." });
   };
 
   const handleMarkComplete = (id: string) => {
@@ -405,7 +421,6 @@ export default function TasksPage() {
                   >
                     <option value="todo">To do</option>
                     <option value="doing">In progress</option>
-                    <option value="done">Done</option>
                   </select>
                 </div>
                 <div className="flex flex-col gap-1">

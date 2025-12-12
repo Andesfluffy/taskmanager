@@ -182,14 +182,6 @@ export default function TasksPage() {
     }
   };
 
-  const showToast = useCallback((toast: Omit<Toast, "id">) => {
-    const id = crypto.randomUUID();
-    setToasts((prev) => [...prev, { ...toast, id }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((item) => item.id !== id));
-    }, 4200);
-  }, []);
-
   const interactionBlockedReason =
     authState.phase === "error"
       ? authState.message

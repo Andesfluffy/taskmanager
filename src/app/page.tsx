@@ -101,10 +101,23 @@ export default function Home() {
   const showLoading = authState.phase === "loading";
   const hasError = authState.phase === "error";
 
+  const headlineBadge = (
+    <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-[#18413e] shadow-sm ring-1 ring-[#dce9e7]">
+      Calm task planning
+      <span className="h-2 w-2 rounded-full" style={{ background: palette.mint }} />
+    </div>
+  );
+
   const statItems = [
     { label: "Team clarity", value: "98%" },
     { label: "Avg. response", value: "< 2m" },
     { label: "Boards secured", value: "1,200+" },
+  ];
+
+  const features = [
+    { title: "Priorities that stay visible", body: "Pin key work and never lose sight of what matters most." },
+    { title: "Lightweight collaboration", body: "Assign owners, add updates, and move on—no clutter." },
+    { title: "Confidence in access", body: "Google sign-in keeps every workspace private and ready." },
   ];
 
   return (
@@ -132,23 +145,28 @@ export default function Home() {
 
         <main className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-start">
           <section className="space-y-8">
-            <h1 className="text-4xl font-semibold leading-tight text-[#0f2b2a] md:text-5xl">Simple task home.</h1>
-            <p className="max-w-2xl text-lg text-[#2f5653]">
-              A mint and white space that stays calm, keeps owners clear, and gets you into your boards fast.
-            </p>
-            <button
-              className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-70"
-              style={{ background: `linear-gradient(135deg, ${palette.mint}, #1aa38d)` }}
-              onClick={user ? handleSignOut : handleGoogleSignIn}
-              disabled={showLoading || hasError}
-            >
-              {user ? "Sign out" : "Sign in with Google"}
-              <span aria-hidden className="text-base">→</span>
-            </button>
-
-            <div className="inline-flex items-center gap-3 rounded-2xl bg-white/80 px-4 py-3 text-sm font-semibold text-[#2f5653] shadow-sm ring-1 ring-[#dce9e6]">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: palette.mint }} />
-              Secure Google access. No extra steps.
+            {headlineBadge}
+            <div className="space-y-4">
+              <h1 className="text-4xl font-semibold leading-tight text-[#0f2b2a] md:text-5xl">
+                A smoother home page for your tasks.
+              </h1>
+              <p className="max-w-2xl text-lg text-[#2f5653]">
+                Build calm, professional momentum with a mint and white workspace. Keep every commitment visible and every teammate aligned before the day begins.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-4">
+              <button
+                className="rounded-full px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-70"
+                style={{ background: `linear-gradient(135deg, ${palette.mint}, #1aa38d)` }}
+                onClick={user ? handleSignOut : handleGoogleSignIn}
+                disabled={showLoading || hasError}
+              >
+                {user ? "Sign out" : "Sign in with Google"}
+              </button>
+              <div className="inline-flex items-center gap-2 rounded-full border border-[#d6ece8] bg-white px-4 py-2 text-sm font-semibold text-[#2f5653]">
+                <span className="h-2 w-2 rounded-full" style={{ background: palette.mint }} />
+                Secure access powered by Firebase
+              </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-3">
@@ -161,12 +179,33 @@ export default function Home() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">
-              {["Pin priorities", "Assign quickly", "Stay private"].map((feature) => (
-                <div key={feature} className="flex items-center gap-3 rounded-2xl bg-white/90 p-4 shadow-sm ring-1 ring-[#dbe8e6]">
-                  <span className="h-8 w-8 rounded-full bg-gradient-to-br from-[#66e0cc] via-[#3cd3ba] to-[#1da68a]" />
-                  <p className="text-sm font-semibold text-[#0f2b2a]">{feature}</p>
+              {features.map((feature) => (
+                <div key={feature.title} className="flex flex-col gap-2 rounded-2xl bg-white/90 p-4 shadow-sm ring-1 ring-[#dbe8e6]">
+                  <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#66e0cc] via-[#3cd3ba] to-[#1da68a]" />
+                  <p className="text-base font-semibold text-[#0f2b2a]">{feature.title}</p>
+                  <p className="text-sm text-[#2f5653]">{feature.body}</p>
                 </div>
               ))}
+            </div>
+
+            <div className="hidden overflow-hidden rounded-3xl bg-white/80 shadow-[0_22px_70px_rgba(10,41,38,0.12)] ring-1 ring-[#dbe8e6] lg:block">
+              <div className="grid grid-cols-[1fr_auto] items-center">
+                <div className="space-y-3 px-6 py-8">
+                  <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[#2f5653]">Workflow preview</p>
+                  <p className="text-2xl font-semibold text-[#0f2b2a]">Columns that keep work clear.</p>
+                  <p className="text-sm text-[#2f5653]">
+                    To-do, Doing, Done—organized with calm mint highlights so you can scan what matters in seconds.
+                  </p>
+                </div>
+                <Image
+                  alt="A minimal kanban board with mint highlights"
+                  className="h-full w-full max-w-xl rounded-l-3xl object-cover"
+                  height={420}
+                  src="https://images.unsplash.com/photo-1521737604893-d14cc237f11d?q=80&w=800&auto=format&fit=crop&ixlib=rb-4.1.0"
+                  width={800}
+                  priority
+                />
+              </div>
             </div>
           </section>
 

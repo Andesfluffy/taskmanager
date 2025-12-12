@@ -76,6 +76,8 @@ export default function TasksPage() {
   const [editError, setEditError] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>(defaultTasks);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [pendingDelete, setPendingDelete] = useState<Task | null>(null);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   useEffect(() => {
     if (missingConfig.length > 0 || !firebaseConfig) return undefined;
@@ -164,6 +166,16 @@ export default function TasksPage() {
     showToast({ tone: "success", title: "Task added", description: "The new task was created." });
   };
 
+  const handleMarkComplete = (id: string) => {
+    setTasks((prev) => prev.map((task) => (task.id === id ? { ...task, status: "done" } : task)));
+    if (editingTaskId === id) {
+      setEditingTaskId(null);
+      setEditDraft(null);
+      setEditError(null);
+    }
+    showToast({ tone: "success", title: "Task completed", description: "Marked as done." });
+  };
+
   const handleEditStart = (task: Task) => {
     setEditingTaskId(task.id);
     setEditDraft({ title: task.title, status: task.status, priority: task.priority });
@@ -199,6 +211,18 @@ export default function TasksPage() {
     showToast({ tone: "info", title: "Task removed", description: "The task has been deleted." });
   };
 
+  const requestDeleteTask = (task: Task) => {
+    setPendingDelete(task);
+  };
+
+  const cancelDeleteTask = () => setPendingDelete(null);
+
+  const confirmDeleteTask = () => {
+    if (!pendingDelete) return;
+    handleDeleteTask(pendingDelete.id);
+    setPendingDelete(null);
+  };
+
   const readyUser = authState.phase === "ready" ? authState.user : undefined;
   const groupedTasks = tasks.reduce<Record<Task["status"], Task[]>>(
     (groups, task) => {
@@ -206,6 +230,125 @@ export default function TasksPage() {
       return groups;
     },
     { todo: [], doing: [], done: [] },
+  );
+
+  const orderedTasks = useMemo(() => {
+    const statusOrder: Task["status"][] = ["todo", "doing", "done"];
+    return [...tasks].sort((a, b) => statusOrder.indexOf(a.status) - statusOrder.indexOf(b.status));
+  }, [tasks]);
+
+  const renderTaskCard = (task: Task) => (
+    <article key={task.id} className="rounded-xl bg-white px-3 py-3 shadow-sm ring-1 ring-[#dbe8e6]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1">
+          <p className="text-sm font-semibold text-[#0f2b2a]">{task.title}</p>
+          <p className="text-xs text-[#2f5653]">{task.status === "todo" ? "Queued" : task.status === "doing" ? "In motion" : "Completed"}</p>
+        </div>
+        <div className="flex flex-col items-end gap-2">
+          <span className="rounded-full bg-[#ecf7f4] px-3 py-1 text-xs font-semibold text-[#2f5653]">{task.priority}</span>
+          {viewMode === "list" && (
+            <span className="rounded-full bg-[#f6fbf9] px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#2f5653] ring-1 ring-[#d6ece8]">
+              {task.status === "todo" ? "To do" : task.status === "doing" ? "In progress" : "Done"}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {editingTaskId === task.id && editDraft ? (
+        <form className="mt-3 space-y-3 rounded-xl bg-[#f6fbf9] p-3 ring-1 ring-[#dbe8e6]" onSubmit={(event) => handleUpdateTask(event, task.id)}>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#2f5653]">Title</label>
+            <input
+              className="w-full rounded-lg border border-[#d6ece8] bg-white px-3 py-2 text-sm text-[#0f2b2a] shadow-sm focus:border-[#2ec4b6] focus:outline-none"
+              value={editDraft.title}
+              onChange={(event) => setEditDraft((prev) => (prev ? { ...prev, title: event.target.value } : prev))}
+            />
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#2f5653]">Status</label>
+              <select
+                className="w-full rounded-lg border border-[#d6ece8] bg-white px-3 py-2 text-sm text-[#0f2b2a] shadow-sm focus:border-[#2ec4b6] focus:outline-none"
+                value={editDraft.status}
+                onChange={(event) =>
+                  setEditDraft((prev) => prev ? { ...prev, status: event.target.value as Task["status"] } : prev)
+                }
+              >
+                <option value="todo">To do</option>
+                <option value="doing">In progress</option>
+                <option value="done">Done</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#2f5653]">Priority</label>
+              <select
+                className="w-full rounded-lg border border-[#d6ece8] bg-white px-3 py-2 text-sm text-[#0f2b2a] shadow-sm focus:border-[#2ec4b6] focus:outline-none"
+                value={editDraft.priority}
+                onChange={(event) =>
+                  setEditDraft((prev) => prev ? { ...prev, priority: event.target.value as Task["priority"] } : prev)
+                }
+              >
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+              </select>
+            </div>
+          </div>
+          {editError && <p className="text-xs text-[#c0392b]">{editError}</p>}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="submit"
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#2ec4b6] px-3 py-2 text-xs font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:shadow-lg"
+            >
+              Save changes
+            </button>
+            <button
+              type="button"
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-[#d6ece8] px-3 py-2 text-xs font-semibold text-[#0f2b2a] transition hover:-translate-y-0.5 hover:shadow-sm"
+              onClick={() => {
+                setEditingTaskId(null);
+                setEditDraft(null);
+                setEditError(null);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {task.status !== "done" && (
+            <button
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-[#d6ece8] px-3 py-2 text-xs font-semibold text-[#0f2b2a] transition hover:-translate-y-0.5 hover:shadow-sm"
+              onClick={() => handleAdvance(task.id)}
+            >
+              Move to {task.status === "todo" ? "In progress" : "Done"}
+            </button>
+          )}
+          {task.status !== "done" && (
+            <button
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#2ec4b6]/10 px-3 py-2 text-xs font-semibold text-[#0f2b2a] transition hover:-translate-y-0.5 hover:shadow-sm ring-1 ring-[#b9e8e1]"
+              onClick={() => handleMarkComplete(task.id)}
+            >
+              Mark as completed
+            </button>
+          )}
+          <button
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-[#d6ece8] px-3 py-2 text-xs font-semibold text-[#0f2b2a] transition hover:-translate-y-0.5 hover:shadow-sm"
+            onClick={() => handleEditStart(task)}
+          >
+            Edit
+          </button>
+          <button
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#f8e1de] px-3 py-2 text-xs font-semibold text-[#8b1a1a] transition hover:-translate-y-0.5 hover:shadow-sm"
+            onClick={() => requestDeleteTask(task)}
+          >
+            Delete
+          </button>
+          {task.status === "done" && <p className="w-full text-xs text-[#2f5653]">Completed and ready to report.</p>}
+        </div>
+      )}
+    </article>
   );
 
   return (
@@ -302,135 +445,64 @@ export default function TasksPage() {
             </form>
           </div>
 
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            {(
-              [
-                { key: "todo", title: "To do" },
-                { key: "doing", title: "In progress" },
-                { key: "done", title: "Done" },
-              ] as const
-            ).map(({ key, title }) => (
-              <div key={key} className="flex flex-col gap-3 rounded-2xl bg-[#f6fbf9] p-4 ring-1 ring-[#dbe8e6]">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-[#0f2b2a]">{title}</p>
-                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#2f5653] shadow-sm ring-1 ring-[#d6ece8]">
-                    {groupedTasks[key].length} tasks
-                  </span>
-                </div>
-                <div className="space-y-3">
-                  {groupedTasks[key].length === 0 && (
-                    <p className="rounded-xl bg-white px-3 py-3 text-sm text-[#2f5653] ring-1 ring-dashed ring-[#cde9e0]">
-                      Nothing here yet. Add a task to keep momentum.
-                    </p>
-                  )}
-                  {groupedTasks[key].map((task) => (
-                    <article key={task.id} className="rounded-xl bg-white px-3 py-3 shadow-sm ring-1 ring-[#dbe8e6]">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="space-y-1">
-                          <p className="text-sm font-semibold text-[#0f2b2a]">{task.title}</p>
-                          <p className="text-xs text-[#2f5653]">{task.status === "todo" ? "Queued" : task.status === "doing" ? "In motion" : "Completed"}</p>
-                        </div>
-                        <span className="rounded-full bg-[#ecf7f4] px-3 py-1 text-xs font-semibold text-[#2f5653]">{task.priority}</span>
-                      </div>
-
-                      {editingTaskId === task.id && editDraft ? (
-                        <form className="mt-3 space-y-3 rounded-xl bg-[#f6fbf9] p-3 ring-1 ring-[#dbe8e6]" onSubmit={(event) => handleUpdateTask(event, task.id)}>
-                          <div className="flex flex-col gap-1">
-                            <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#2f5653]">Title</label>
-                            <input
-                              className="w-full rounded-lg border border-[#d6ece8] bg-white px-3 py-2 text-sm text-[#0f2b2a] shadow-sm focus:border-[#2ec4b6] focus:outline-none"
-                              value={editDraft.title}
-                              onChange={(event) => setEditDraft((prev) => (prev ? { ...prev, title: event.target.value } : prev))}
-                            />
-                          </div>
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            <div className="flex flex-col gap-1">
-                              <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#2f5653]">Status</label>
-                              <select
-                                className="w-full rounded-lg border border-[#d6ece8] bg-white px-3 py-2 text-sm text-[#0f2b2a] shadow-sm focus:border-[#2ec4b6] focus:outline-none"
-                                value={editDraft.status}
-                                onChange={(event) =>
-                                  setEditDraft((prev) =>
-                                    prev ? { ...prev, status: event.target.value as Task["status"] } : prev,
-                                  )
-                                }
-                              >
-                                <option value="todo">To do</option>
-                                <option value="doing">In progress</option>
-                                <option value="done">Done</option>
-                              </select>
-                            </div>
-                            <div className="flex flex-col gap-1">
-                              <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#2f5653]">Priority</label>
-                              <select
-                                className="w-full rounded-lg border border-[#d6ece8] bg-white px-3 py-2 text-sm text-[#0f2b2a] shadow-sm focus:border-[#2ec4b6] focus:outline-none"
-                                value={editDraft.priority}
-                                onChange={(event) =>
-                                  setEditDraft((prev) =>
-                                    prev ? { ...prev, priority: event.target.value as Task["priority"] } : prev,
-                                  )
-                                }
-                              >
-                                <option value="High">High</option>
-                                <option value="Medium">Medium</option>
-                                <option value="Low">Low</option>
-                              </select>
-                            </div>
-                          </div>
-                          {editError && <p className="text-xs text-[#c0392b]">{editError}</p>}
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="submit"
-                              className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#2ec4b6] px-3 py-2 text-xs font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:shadow-lg"
-                            >
-                              Save changes
-                            </button>
-                            <button
-                              type="button"
-                              className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-[#d6ece8] px-3 py-2 text-xs font-semibold text-[#0f2b2a] transition hover:-translate-y-0.5 hover:shadow-sm"
-                              onClick={() => {
-                                setEditingTaskId(null);
-                                setEditDraft(null);
-                                setEditError(null);
-                              }}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </form>
-                      ) : (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {task.status !== "done" && (
-                            <button
-                              className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-[#d6ece8] px-3 py-2 text-xs font-semibold text-[#0f2b2a] transition hover:-translate-y-0.5 hover:shadow-sm"
-                              onClick={() => handleAdvance(task.id)}
-                            >
-                              Move to {task.status === "todo" ? "In progress" : "Done"}
-                            </button>
-                          )}
-                          <button
-                            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-[#d6ece8] px-3 py-2 text-xs font-semibold text-[#0f2b2a] transition hover:-translate-y-0.5 hover:shadow-sm"
-                            onClick={() => handleEditStart(task)}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#f8e1de] px-3 py-2 text-xs font-semibold text-[#8b1a1a] transition hover:-translate-y-0.5 hover:shadow-sm"
-                            onClick={() => handleDeleteTask(task.id)}
-                          >
-                            Delete
-                          </button>
-                          {task.status === "done" && (
-                            <p className="w-full text-xs text-[#2f5653]">Completed and ready to report.</p>
-                          )}
-                        </div>
-                      )}
-                    </article>
-                  ))}
-                </div>
-              </div>
-            ))}
+          <div className="mt-6 flex items-center justify-end gap-2">
+            <div className="rounded-full bg-[#f6fbf9] p-1 ring-1 ring-[#dbe8e6]">
+              <button
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${viewMode === "grid" ? "bg-white text-[#0f2b2a] shadow-sm" : "text-[#2f5653]"}`}
+                onClick={() => setViewMode("grid")}
+              >
+                Grid view
+              </button>
+              <button
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${viewMode === "list" ? "bg-white text-[#0f2b2a] shadow-sm" : "text-[#2f5653]"}`}
+                onClick={() => setViewMode("list")}
+              >
+                List view
+              </button>
+            </div>
           </div>
+
+          {viewMode === "grid" ? (
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              {(
+                [
+                  { key: "todo", title: "To do" },
+                  { key: "doing", title: "In progress" },
+                  { key: "done", title: "Done" },
+                ] as const
+              ).map(({ key, title }) => (
+                <div key={key} className="flex flex-col gap-3 rounded-2xl bg-[#f6fbf9] p-4 ring-1 ring-[#dbe8e6]">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-[#0f2b2a]">{title}</p>
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#2f5653] shadow-sm ring-1 ring-[#d6ece8]">
+                      {groupedTasks[key].length} tasks
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {groupedTasks[key].length === 0 && (
+                      <p className="rounded-xl bg-white px-3 py-3 text-sm text-[#2f5653] ring-1 ring-dashed ring-[#cde9e0]">
+                        Nothing here yet. Add a task to keep momentum.
+                      </p>
+                    )}
+                    {groupedTasks[key].map((task) => renderTaskCard(task))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {orderedTasks.length === 0 && (
+                <p className="rounded-xl bg-[#f6fbf9] px-4 py-3 text-sm text-[#2f5653] ring-1 ring-dashed ring-[#cde9e0]">
+                  No tasks yet. Add a few to see them here.
+                </p>
+              )}
+              {orderedTasks.map((task) => (
+                <div key={task.id} className="rounded-2xl bg-[#f6fbf9] p-3 ring-1 ring-[#dbe8e6]">
+                  {renderTaskCard(task)}
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <footer className="flex flex-col gap-3 rounded-3xl bg-white/85 px-6 py-6 text-sm text-[#2f5653] shadow-[0_20px_70px_rgba(10,41,38,0.08)] ring-1 ring-[#dbe8e6] sm:flex-row sm:items-center sm:justify-between">
@@ -465,6 +537,32 @@ export default function TasksPage() {
                 {toast.description && <p className="mt-1 text-xs opacity-90">{toast.description}</p>}
               </div>
             ))}
+          </div>
+        )}
+
+        {pendingDelete && (
+          <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/20 px-4 py-6 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-3xl bg-white p-6 text-[#0f2b2a] shadow-[0_24px_80px_rgba(10,41,38,0.22)] ring-1 ring-[#dbe8e6]">
+              <p className="text-xs uppercase tracking-[0.22em] text-[#2f5653]">Confirm deletion</p>
+              <h3 className="mt-2 text-xl font-semibold">Remove this task?</h3>
+              <p className="mt-2 text-sm text-[#2f5653]">
+                &ldquo;{pendingDelete.title}&rdquo; will be permanently removed from your workspace. This cannot be undone.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#f8e1de] px-4 py-2 text-sm font-semibold text-[#8b1a1a] transition hover:-translate-y-0.5 hover:shadow-sm"
+                  onClick={confirmDeleteTask}
+                >
+                  Delete task
+                </button>
+                <button
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-[#d6ece8] px-4 py-2 text-sm font-semibold text-[#0f2b2a] transition hover:-translate-y-0.5 hover:shadow-sm"
+                  onClick={cancelDeleteTask}
+                >
+                  Keep task
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

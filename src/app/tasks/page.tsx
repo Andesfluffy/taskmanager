@@ -108,6 +108,12 @@ export default function TasksPage() {
     }
   }, [authState, router]);
 
+  useEffect(() => {
+    if (authState.phase === "error") {
+      setActionMessage(authState.message);
+    }
+  }, [authState]);
+
   const handleSignOut = async () => {
     setActionMessage("Signing you out…");
     try {
@@ -122,6 +128,8 @@ export default function TasksPage() {
   };
 
   const handleAdvance = (id: string) => {
+    if (!enforceAuthenticatedActions()) return;
+
     setTasks((prev) =>
       prev.map((task) => {
         if (task.id !== id) return task;
@@ -141,6 +149,28 @@ export default function TasksPage() {
     }, 4200);
   };
 
+  const interactionBlockedReason =
+    authState.phase === "error"
+      ? authState.message
+      : authState.phase === "loading"
+        ? "Authenticating with Firebase. Actions are paused until we confirm your session."
+        : !authState.user
+          ? "Sign in to manage tasks in this workspace."
+          : null;
+
+  const enforceAuthenticatedActions = () => {
+    if (!interactionBlockedReason) return true;
+
+    const description =
+      authState.phase === "error"
+        ? "Resolve the Firebase configuration issue to continue."
+        : "Please complete sign-in before updating tasks.";
+
+    showToast({ tone: "error", title: "Action blocked", description });
+    setActionMessage(interactionBlockedReason);
+    return false;
+  };
+
   const validateTaskFields = ({ title }: { title: string }) => {
     const trimmed = title.trim();
     if (!trimmed) return "Title is required.";
@@ -150,6 +180,8 @@ export default function TasksPage() {
 
   const handleAddTask = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!enforceAuthenticatedActions()) return;
+
     const validationError = validateTaskFields({ title: newTask.title });
     if (validationError) {
       setNewTaskError(validationError);
@@ -173,16 +205,8 @@ export default function TasksPage() {
   };
 
   const handleMarkComplete = (id: string) => {
-    setTasks((prev) => prev.map((task) => (task.id === id ? { ...task, status: "done" } : task)));
-    if (editingTaskId === id) {
-      setEditingTaskId(null);
-      setEditDraft(null);
-      setEditError(null);
-    }
-    showToast({ tone: "success", title: "Task completed", description: "Marked as done." });
-  };
+    if (!enforceAuthenticatedActions()) return;
 
-  const handleMarkComplete = (id: string) => {
     setTasks((prev) => prev.map((task) => (task.id === id ? { ...task, status: "done" } : task)));
     if (editingTaskId === id) {
       setEditingTaskId(null);
@@ -193,6 +217,8 @@ export default function TasksPage() {
   };
 
   const handleEditStart = (task: Task) => {
+    if (!enforceAuthenticatedActions()) return;
+
     setEditingTaskId(task.id);
     setEditDraft({ title: task.title, status: task.status, priority: task.priority });
     setEditError(null);
@@ -200,6 +226,8 @@ export default function TasksPage() {
 
   const handleUpdateTask = (event: FormEvent<HTMLFormElement>, id: string) => {
     event.preventDefault();
+    if (!enforceAuthenticatedActions()) return;
+
     if (!editDraft) return;
     const validationError = validateTaskFields({ title: editDraft.title });
     if (validationError) {
@@ -218,6 +246,8 @@ export default function TasksPage() {
   };
 
   const handleDeleteTask = (id: string) => {
+    if (!enforceAuthenticatedActions()) return;
+
     setTasks((prev) => prev.filter((task) => task.id !== id));
     if (editingTaskId === id) {
       setEditingTaskId(null);
@@ -228,13 +258,15 @@ export default function TasksPage() {
   };
 
   const requestDeleteTask = (task: Task) => {
+    if (!enforceAuthenticatedActions()) return;
+
     setPendingDelete(task);
   };
 
   const cancelDeleteTask = () => setPendingDelete(null);
 
   const confirmDeleteTask = () => {
-    if (!pendingDelete) return;
+    if (!pendingDelete || !enforceAuthenticatedActions()) return;
     handleDeleteTask(pendingDelete.id);
     setPendingDelete(null);
   };
@@ -278,6 +310,7 @@ export default function TasksPage() {
               className="w-full rounded-lg border border-[#d6ece8] bg-white px-3 py-2 text-sm text-[#0f2b2a] shadow-sm focus:border-[#2ec4b6] focus:outline-none"
               value={editDraft.title}
               onChange={(event) => setEditDraft((prev) => (prev ? { ...prev, title: event.target.value } : prev))}
+              disabled={!!interactionBlockedReason}
             />
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
@@ -289,6 +322,7 @@ export default function TasksPage() {
                 onChange={(event) =>
                   setEditDraft((prev) => prev ? { ...prev, status: event.target.value as Task["status"] } : prev)
                 }
+                disabled={!!interactionBlockedReason}
               >
                 <option value="todo">To do</option>
                 <option value="doing">In progress</option>
@@ -303,6 +337,7 @@ export default function TasksPage() {
                 onChange={(event) =>
                   setEditDraft((prev) => prev ? { ...prev, priority: event.target.value as Task["priority"] } : prev)
                 }
+                disabled={!!interactionBlockedReason}
               >
                 <option value="High">High</option>
                 <option value="Medium">Medium</option>
@@ -315,6 +350,7 @@ export default function TasksPage() {
             <button
               type="submit"
               className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#2ec4b6] px-3 py-2 text-xs font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:shadow-lg"
+              disabled={!!interactionBlockedReason}
             >
               Save changes
             </button>
@@ -326,6 +362,7 @@ export default function TasksPage() {
                 setEditDraft(null);
                 setEditError(null);
               }}
+              disabled={!!interactionBlockedReason}
             >
               Cancel
             </button>
@@ -337,6 +374,7 @@ export default function TasksPage() {
             <button
               className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-[#d6ece8] px-3 py-2 text-xs font-semibold text-[#0f2b2a] transition hover:-translate-y-0.5 hover:shadow-sm"
               onClick={() => handleAdvance(task.id)}
+              disabled={!!interactionBlockedReason}
             >
               Move to {task.status === "todo" ? "In progress" : "Done"}
             </button>
@@ -345,6 +383,7 @@ export default function TasksPage() {
             <button
               className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#2ec4b6]/10 px-3 py-2 text-xs font-semibold text-[#0f2b2a] transition hover:-translate-y-0.5 hover:shadow-sm ring-1 ring-[#b9e8e1]"
               onClick={() => handleMarkComplete(task.id)}
+              disabled={!!interactionBlockedReason}
             >
               Mark as completed
             </button>
@@ -352,12 +391,14 @@ export default function TasksPage() {
           <button
             className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-[#d6ece8] px-3 py-2 text-xs font-semibold text-[#0f2b2a] transition hover:-translate-y-0.5 hover:shadow-sm"
             onClick={() => handleEditStart(task)}
+            disabled={!!interactionBlockedReason}
           >
             Edit
           </button>
           <button
             className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#f8e1de] px-3 py-2 text-xs font-semibold text-[#8b1a1a] transition hover:-translate-y-0.5 hover:shadow-sm"
             onClick={() => requestDeleteTask(task)}
+            disabled={!!interactionBlockedReason}
           >
             Delete
           </button>
@@ -406,6 +447,7 @@ export default function TasksPage() {
                   placeholder="Add a concise task title"
                   value={newTask.title}
                   onChange={(event) => setNewTask((prev) => ({ ...prev, title: event.target.value }))}
+                  disabled={!!interactionBlockedReason}
                 />
                 {newTaskError && <p className="text-xs text-[#c0392b]">{newTaskError}</p>}
               </div>
@@ -418,6 +460,7 @@ export default function TasksPage() {
                     onChange={(event) =>
                       setNewTask((prev) => ({ ...prev, status: event.target.value as Task["status"] }))
                     }
+                    disabled={!!interactionBlockedReason}
                   >
                     <option value="todo">To do</option>
                     <option value="doing">In progress</option>
@@ -431,6 +474,7 @@ export default function TasksPage() {
                     onChange={(event) =>
                       setNewTask((prev) => ({ ...prev, priority: event.target.value as Task["priority"] }))
                     }
+                    disabled={!!interactionBlockedReason}
                   >
                     <option value="High">High</option>
                     <option value="Medium">Medium</option>
@@ -442,7 +486,7 @@ export default function TasksPage() {
                 <button
                   type="submit"
                   className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#2ec4b6] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-70"
-                  disabled={!newTask.title.trim()}
+                  disabled={!newTask.title.trim() || !!interactionBlockedReason}
                 >
                   Add task
                 </button>
@@ -453,10 +497,16 @@ export default function TasksPage() {
                     setNewTask({ title: "", status: "todo", priority: "Medium" });
                     setNewTaskError(null);
                   }}
+                  disabled={!!interactionBlockedReason}
                 >
                   Reset
                 </button>
               </div>
+              {interactionBlockedReason && (
+                <p className="text-xs text-[#2f5653]">
+                  {interactionBlockedReason}
+                </p>
+              )}
             </form>
           </div>
 

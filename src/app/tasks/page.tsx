@@ -87,14 +87,42 @@ export default function TasksPage() {
     }, 4200);
   }, []);
 
-  const validateTaskFields = ({ title }: { title: string }) => {
+  const syncStatusAndCompletion = (status: Task["status"], completed: boolean) => {
+    if (completed || status === "done") {
+      return { status: "done" as const, completed: true };
+    }
+    if (status === "doing") {
+      return { status: "doing" as const, completed: false };
+    }
+    return { status: "todo" as const, completed: false };
+  };
+
+  const normalizeTask = (task: ApiTask): Task => {
+    const { status, completed } = syncStatusAndCompletion(task.status ?? "todo", Boolean(task.completed));
+    const priority: Task["priority"] =
+      task.priority && ["High", "Medium", "Low"].includes(task.priority) ? task.priority : "Medium";
+
+    return {
+      id: task.id ?? crypto.randomUUID(),
+      title: task.title ?? "",
+      description: task.description ?? "",
+      status,
+      completed,
+      priority,
+    };
+  };
+
+  const validateTaskFields = ({ title, description }: { title: string; description?: string }) => {
     const trimmed = title.trim();
     if (!trimmed) return "Title is required.";
     if (trimmed.length < 3) return "Use at least 3 characters for the title.";
+    if (description !== undefined && typeof description !== "string") {
+      return "Description must be text.";
+    }
     return null;
   };
 
-  const requestJson = async <T,>(input: RequestInfo | URL, init?: RequestInit) => {
+  const requestJson = useCallback(async <T,>(input: RequestInfo | URL, init?: RequestInit) => {
     const response = await fetch(input, {
       ...init,
       headers: {
@@ -119,20 +147,21 @@ export default function TasksPage() {
     }
 
     return payload as T;
-  };
+  }, []);
 
   const loadTasks = useCallback(async () => {
     setIsLoadingTasks(true);
     try {
-      const data = await requestJson<{ tasks: Task[] }>("/api/tasks");
-      setTasks(data.tasks ?? []);
+      const data = await requestJson<{ tasks: ApiTask[] }>("/api/tasks");
+      const normalized = (data.tasks ?? []).map(normalizeTask);
+      setTasks(normalized);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to load tasks.";
       showToast({ tone: "error", title: "Unable to load tasks", description: message });
     } finally {
       setIsLoadingTasks(false);
     }
-  }, [showToast]);
+  }, [requestJson, showToast]);
 
   useEffect(() => {
     if (missingConfig.length > 0 || !firebaseConfig) return undefined;
@@ -204,62 +233,11 @@ export default function TasksPage() {
     return false;
   };
 
-  const validateTaskFields = ({ title, description }: { title: string; description?: string }) => {
-    const trimmed = title.trim();
-    if (!trimmed) return "Title is required.";
-
-    if (description !== undefined && typeof description !== "string") {
-      return "Description must be text.";
-    }
-
-    return null;
-  };
-
-  const requestJson = async <T,>(input: RequestInfo | URL, init?: RequestInit) => {
-    const response = await fetch(input, {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...(init?.headers ?? {}),
-      },
-    });
-
-    let payload: unknown;
-    try {
-      payload = await response.json();
-    } catch {
-      payload = {};
-    }
-
-    if (!response.ok) {
-      const errorMessage =
-        typeof (payload as { error?: unknown }).error === "string"
-          ? (payload as { error?: unknown }).error
-          : "Request failed.";
-      throw new Error(errorMessage);
-    }
-
-    return payload as T;
-  };
-
-  const loadTasks = useCallback(async () => {
-    setIsLoadingTasks(true);
-    try {
-      const data = await requestJson<{ tasks: Task[] }>("/api/tasks");
-      setTasks(data.tasks ?? []);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to load tasks.";
-      showToast({ tone: "error", title: "Unable to load tasks", description: message });
-    } finally {
-      setIsLoadingTasks(false);
-    }
-  }, [showToast]);
-
   const handleAddTask = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!enforceAuthenticatedActions()) return;
 
-    const validationError = validateTaskFields({ title: newTask.title });
+    const validationError = validateTaskFields({ title: newTask.title, description: newTask.description });
     if (validationError) {
       setNewTaskError(validationError);
       showToast({ tone: "error", title: "Please check the form", description: validationError });
@@ -268,22 +246,20 @@ export default function TasksPage() {
 
     const trimmedTitle = newTask.title.trim();
     const trimmedDescription = newTask.description.trim();
-    const { status, completed } = syncStatusAndCompletion(newTask.status, newTask.completed || newTask.status === "done");
+    const { status, completed } = syncStatusAndCompletion(newTask.status, newTask.completed);
 
     try {
-      const data = await requestJson<{ task: Task }>("/api/tasks", {
+      const data = await requestJson<{ task?: ApiTask }>("/api/tasks", {
         method: "POST",
-        body: JSON.stringify({
-          title: newTask.title.trim(),
-          status: creationStatus,
-          priority: newTask.priority,
-        }),
+        body: JSON.stringify({ title: trimmedTitle, description: trimmedDescription, completed }),
       });
 
-      setTasks((prev) => [data.task, ...prev]);
-      setNewTask({ title: "", status: "todo", priority: "Medium" });
+      const normalized = normalizeTask(data.task ?? { title: trimmedTitle, description: trimmedDescription, completed });
+      setTasks((prev) => [{ ...normalized, status, completed, priority: newTask.priority }, ...prev]);
+      setNewTask({ title: "", description: "", status: "todo", completed: false, priority: "Medium" });
       setNewTaskError(null);
-      showToast({ tone: "success", title: "Task added", description: adjustedDescription });
+      const toastDescription = status === "done" ? "Added and marked complete." : "The new task was created.";
+      showToast({ tone: "success", title: "Task added", description: toastDescription });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to create the task.";
       setNewTaskError(message);
@@ -292,15 +268,19 @@ export default function TasksPage() {
   };
 
   const handleAdvance = async (id: string) => {
+    if (!enforceAuthenticatedActions()) return;
+
     const task = tasks.find((item) => item.id === id);
     if (!task) return;
 
     const nextStatus = task.status === "todo" ? "doing" : task.status === "doing" ? "done" : null;
     if (!nextStatus) return;
 
+    const { status, completed } = syncStatusAndCompletion(nextStatus, task.completed);
+
     try {
-      await requestJson("/api/tasks", { method: "PATCH", body: JSON.stringify({ id, status: nextStatus }) });
-      setTasks((prev) => prev.map((item) => (item.id === id ? { ...item, status: nextStatus } : item)));
+      await requestJson("/api/tasks", { method: "PATCH", body: JSON.stringify({ id, completed }) });
+      setTasks((prev) => prev.map((item) => (item.id === id ? { ...item, status, completed } : item)));
       showToast({ tone: "success", title: "Task updated", description: "Status advanced." });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to advance the task.";
@@ -309,9 +289,13 @@ export default function TasksPage() {
   };
 
   const handleMarkComplete = async (id: string) => {
+    if (!enforceAuthenticatedActions()) return;
+
+    const { status, completed } = syncStatusAndCompletion("done", true);
+
     try {
-      await requestJson("/api/tasks", { method: "PATCH", body: JSON.stringify({ id, status: "done" }) });
-      setTasks((prev) => prev.map((task) => (task.id === id ? { ...task, status: "done" } : task)));
+      await requestJson("/api/tasks", { method: "PATCH", body: JSON.stringify({ id, completed }) });
+      setTasks((prev) => prev.map((task) => (task.id === id ? { ...task, status, completed } : task)));
       if (editingTaskId === id) {
         setEditingTaskId(null);
         setEditDraft(null);
@@ -349,14 +333,20 @@ export default function TasksPage() {
       return;
     }
 
+    const trimmedTitle = editDraft.title.trim();
+    const trimmedDescription = editDraft.description?.trim() ?? "";
+    const { status, completed } = syncStatusAndCompletion(editDraft.status, editDraft.completed);
+
     try {
       await requestJson("/api/tasks", {
         method: "PATCH",
-        body: JSON.stringify({ id, ...editDraft, title: editDraft.title.trim() }),
+        body: JSON.stringify({ id, title: trimmedTitle, description: trimmedDescription, completed }),
       });
 
       setTasks((prev) =>
-        prev.map((task) => (task.id === id ? { ...task, ...editDraft, title: editDraft.title.trim() } : task)),
+        prev.map((task) =>
+          task.id === id ? { ...task, ...editDraft, title: trimmedTitle, description: trimmedDescription, status, completed } : task,
+        ),
       );
       setEditingTaskId(null);
       setEditDraft(null);
